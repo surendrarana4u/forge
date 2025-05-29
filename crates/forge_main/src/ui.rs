@@ -606,6 +606,7 @@ impl<F: API> UI<F> {
             ChatResponse::Text { mut text, is_complete, is_md, is_summary } => {
                 if is_complete && !text.trim().is_empty() {
                     if is_md || is_summary {
+                        tracing::info!(message = %text, "Agent Response");
                         text = self.markdown.render(&text);
                     }
 
