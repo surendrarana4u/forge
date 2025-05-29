@@ -93,7 +93,7 @@ impl<M: McpService> ForgeToolService<M> {
         context: ToolCallContext,
         call: ToolCallFull,
     ) -> anyhow::Result<ToolOutput> {
-        debug!(tool_name = ?call.name, arguments = ?call.arguments, "Executing tool call");
+        debug!(tool_name = %call.name, arguments = %call.arguments, "Executing tool call");
 
         // Checks if tool is supported by agent and system.
         let tool = self.validate_tool_call(&context, &call.name).await?;
@@ -112,7 +112,7 @@ impl<M: McpService> ForgeToolService<M> {
         })?;
 
         if let Err(error) = &output {
-            tracing::warn!(cause = %error, tool = ?call.name, "Tool Call Failure");
+            tracing::warn!(cause = ?error, tool = %call.name, "Tool Call Failure");
         }
 
         output

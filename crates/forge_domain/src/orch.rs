@@ -88,7 +88,8 @@ impl<A: Services> Orchestrator<A> {
             if tool_result.is_error() {
                 warn!(
                     agent_id = %agent.id,
-                    tool_call = ?tool_call,
+                    name = %tool_call.name,
+                    arguments = %tool_call.arguments,
                     output = ?tool_result.output,
                     "Tool call failed",
                 );
@@ -525,9 +526,9 @@ impl<A: Services> Orchestrator<A> {
             // Send the usage information if available
 
             info!(
-                token_usage= ?usage.prompt_tokens,
-                estimated_token_usage= ?usage.estimated_tokens,
-                content_length = ?usage.content_length,
+                token_usage = usage.prompt_tokens,
+                estimated_token_usage = usage.estimated_tokens,
+                content_length = usage.content_length,
                 "Processing usage information"
             );
             self.send(agent, ChatResponse::Usage(usage.clone())).await?;
