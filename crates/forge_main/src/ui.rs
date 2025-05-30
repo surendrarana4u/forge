@@ -70,7 +70,7 @@ impl<F: API> UI<F> {
 
     /// Retrieve available models
     async fn get_models(&mut self) -> Result<Vec<Model>> {
-        self.spinner.start(Some("Loading Models"))?;
+        self.spinner.start(Some("Loading"))?;
         let models = self.api.models().await?;
         self.spinner.stop(None)?;
         Ok(models)
@@ -314,7 +314,7 @@ impl<F: API> UI<F> {
                 self.on_compaction().await?;
             }
             Command::Dump(format) => {
-                self.spinner.start(Some("Creating a conversation dump"))?;
+                self.spinner.start(Some("Dumping"))?;
                 self.on_dump(format).await?;
             }
             Command::New => {
@@ -339,7 +339,7 @@ impl<F: API> UI<F> {
                 self.writeln(info)?;
             }
             Command::Tools => {
-                self.spinner.start(Some("Loading tools"))?;
+                self.spinner.start(Some("Loading"))?;
                 use crate::tools_display::format_tools;
                 let tools = self.api.tools().await?;
 
@@ -474,7 +474,7 @@ impl<F: API> UI<F> {
         match self.state.conversation_id {
             Some(ref id) => Ok(id.clone()),
             None => {
-                self.spinner.start(Some("Initializing conversation"))?;
+                self.spinner.start(Some("Initializing"))?;
 
                 // Select a model if workflow doesn't have one
                 let workflow = self.init_state().await?;
@@ -497,8 +497,6 @@ impl<F: API> UI<F> {
                     self.update_model(conversation.main_model()?);
                     conversation.id
                 };
-
-                self.spinner.stop(None)?;
 
                 Ok(id)
             }
