@@ -2,23 +2,12 @@ use std::path::Path;
 
 use anyhow::Context;
 use forge_domain::{
-    ExecutableTool, NamedTool, ToolCallContext, ToolDescription, ToolName, ToolOutput,
+    ExecutableTool, FSListInput, NamedTool, ToolCallContext, ToolDescription, ToolName, ToolOutput,
 };
 use forge_tool_macros::ToolDescription;
 use forge_walker::Walker;
-use schemars::JsonSchema;
-use serde::Deserialize;
 
 use crate::utils::assert_absolute_path;
-
-#[derive(Deserialize, JsonSchema)]
-pub struct FSListInput {
-    /// The path of the directory to list contents for (absolute path required)
-    pub path: String,
-    /// Whether to list files recursively. Use true for recursive listing, false
-    /// or omit for top-level only.
-    pub recursive: Option<bool>,
-}
 
 /// Request to list files and directories within the specified directory. If
 /// recursive is true, it will list all files and directories recursively. If
@@ -119,6 +108,7 @@ mod test {
             .call(
                 ToolCallContext::default(),
                 FSListInput {
+                    explanation: None,
                     path: temp_dir.path().to_string_lossy().to_string(),
                     recursive: None,
                 },
@@ -148,6 +138,7 @@ mod test {
             .call(
                 ToolCallContext::default(),
                 FSListInput {
+                    explanation: None,
                     path: temp_dir.path().to_string_lossy().to_string(),
                     recursive: None,
                 },
@@ -169,6 +160,7 @@ mod test {
             .call(
                 ToolCallContext::default(),
                 FSListInput {
+                    explanation: None,
                     path: nonexistent_dir.to_string_lossy().to_string(),
                     recursive: None,
                 },
@@ -197,6 +189,7 @@ mod test {
             .call(
                 ToolCallContext::default(),
                 FSListInput {
+                    explanation: None,
                     path: temp_dir.path().to_string_lossy().to_string(),
                     recursive: None,
                 },
@@ -236,6 +229,7 @@ mod test {
             .call(
                 ToolCallContext::default(),
                 FSListInput {
+                    explanation: None,
                     path: temp_dir.path().to_string_lossy().to_string(),
                     recursive: Some(true),
                 },
@@ -253,7 +247,11 @@ mod test {
         let result = fs_list
             .call(
                 ToolCallContext::default(),
-                FSListInput { path: "relative/path".to_string(), recursive: None },
+                FSListInput {
+                    path: "relative/path".to_string(),
+                    recursive: None,
+                    explanation: None,
+                },
             )
             .await;
 

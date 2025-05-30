@@ -93,7 +93,10 @@ mod test {
         let result = fs_remove
             .call(
                 ToolCallContext::default(),
-                FSRemoveInput { path: file_path.to_string_lossy().to_string() },
+                FSRemoveInput {
+                    path: file_path.to_string_lossy().to_string(),
+                    explanation: None,
+                },
             )
             .await
             .unwrap();
@@ -112,7 +115,10 @@ mod test {
         let result = fs_remove
             .call(
                 ToolCallContext::default(),
-                FSRemoveInput { path: nonexistent_file.to_string_lossy().to_string() },
+                FSRemoveInput {
+                    path: nonexistent_file.to_string_lossy().to_string(),
+                    explanation: None,
+                },
             )
             .await;
 
@@ -142,7 +148,10 @@ mod test {
         let result = fs_remove
             .call(
                 ToolCallContext::default(),
-                FSRemoveInput { path: dir_path.to_string_lossy().to_string() },
+                FSRemoveInput {
+                    path: dir_path.to_string_lossy().to_string(),
+                    explanation: None,
+                },
             )
             .await;
 
@@ -165,7 +174,7 @@ mod test {
         let result = fs_remove
             .call(
                 ToolCallContext::default(),
-                FSRemoveInput { path: "relative/path.txt".to_string() },
+                FSRemoveInput { path: "relative/path.txt".to_string(), explanation: None },
             )
             .await;
 

@@ -278,6 +278,7 @@ mod tests {
                     command: "echo 'Hello, World!'".to_string(),
                     cwd: env::current_dir().unwrap(),
                     keep_ansi: true,
+                    explanation: None,
                 },
             )
             .await
@@ -301,6 +302,7 @@ mod tests {
                     },
                     cwd: env::current_dir().unwrap(),
                     keep_ansi: true,
+                    explanation: None,
                 },
             )
             .await
@@ -319,6 +321,7 @@ mod tests {
                     command: "echo 'to stdout' && echo 'to stderr' >&2".to_string(),
                     cwd: env::current_dir().unwrap(),
                     keep_ansi: true,
+                    explanation: None,
                 },
             )
             .await
@@ -343,6 +346,7 @@ mod tests {
                     },
                     cwd: temp_dir.clone(),
                     keep_ansi: true,
+                    explanation: None,
                 },
             )
             .await
@@ -363,6 +367,7 @@ mod tests {
                     command: "non_existent_command".to_string(),
                     cwd: env::current_dir().unwrap(),
                     keep_ansi: true,
+                    explanation: None,
                 },
             )
             .await;
@@ -392,6 +397,7 @@ mod tests {
                     command: "".to_string(),
                     cwd: env::current_dir().unwrap(),
                     keep_ansi: true,
+                    explanation: None,
                 },
             )
             .await;
@@ -427,6 +433,7 @@ mod tests {
                     },
                     cwd: current_dir.clone(),
                     keep_ansi: true,
+                    explanation: None,
                 },
             )
             .await
@@ -462,6 +469,7 @@ mod tests {
                     command: "echo 'first' && echo 'second'".to_string(),
                     cwd: env::current_dir().unwrap(),
                     keep_ansi: true,
+                    explanation: None,
                 },
             )
             .await
@@ -479,6 +487,7 @@ mod tests {
                     command: "true".to_string(),
                     cwd: env::current_dir().unwrap(),
                     keep_ansi: true,
+                    explanation: None,
                 },
             )
             .await
@@ -498,6 +507,7 @@ mod tests {
                     command: "echo ''".to_string(),
                     cwd: env::current_dir().unwrap(),
                     keep_ansi: true,
+                    explanation: None,
                 },
             )
             .await
@@ -517,6 +527,7 @@ mod tests {
                     command: "echo $PATH".to_string(),
                     cwd: env::current_dir().unwrap(),
                     keep_ansi: true,
+                    explanation: None,
                 },
             )
             .await
@@ -542,6 +553,7 @@ mod tests {
                     command: cmd.to_string(),
                     cwd: env::current_dir().unwrap(),
                     keep_ansi: true,
+                    explanation: None,
                 },
             )
             .await;
