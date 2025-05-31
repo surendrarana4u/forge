@@ -247,116 +247,10 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_identify_first_compressible_sequence() {
+    fn seq(pattern: impl ToString, preserve_last_n: usize) -> String {
         let model_id = ModelId::new("gpt-4");
-        // Create a context with a sequence of assistant messages
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message"))
-            .add_message(ContextMessage::user(
-                "User message 1",
-                model_id.clone().into(),
-            ))
-            .add_message(ContextMessage::assistant("Assistant message 1", None))
-            .add_message(ContextMessage::assistant("Assistant message 2", None))
-            .add_message(ContextMessage::assistant("Assistant message 3", None))
-            .add_message(ContextMessage::user("User message 2", model_id.into()))
-            .add_message(ContextMessage::assistant("Assistant message 4", None));
+        let pattern = pattern.to_string();
 
-        // With the new logic, we compact from the first assistant message (index 2)
-        // through the end (respecting preservation window)
-        let sequence = find_sequence(&context, 0);
-
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2);
-        assert_eq!(end, 6); // Now includes all messages up through index 6
-    }
-
-    #[test]
-    fn test_no_compressible_sequence() {
-        let model_id = ModelId::new("gpt-4");
-        // Create a context with only single messages - not enough for compaction
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message"))
-            .add_message(ContextMessage::user(
-                "User message",
-                model_id.clone().into(),
-            ))
-            .add_message(ContextMessage::assistant("Assistant message", None));
-
-        // With the updated compaction logic, we need at least two messages after
-        // an assistant message to create a compressible sequence
-        let sequence = find_sequence(&context, 0);
-        assert!(sequence.is_none());
-    }
-
-    #[test]
-    fn test_sequence_at_end_of_context() {
-        let model_id = ModelId::new("gpt-4");
-        // Create a context with a sequence at the end
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message")) // 0
-            .add_message(ContextMessage::user(
-                "User message 1",
-                model_id.clone().into(),
-            )) // 1
-            .add_message(ContextMessage::assistant("Assistant message 1", None)) // 2
-            .add_message(ContextMessage::user(
-                "User message 2",
-                model_id.clone().into(),
-            )) // 3
-            .add_message(ContextMessage::assistant("Assistant message 2", None)) // 4
-            .add_message(ContextMessage::assistant("Assistant message 3", None)); // 5
-
-        // With the updated logic, we start from the first assistant message (index 2)
-        // and include everything to the end
-        let sequence = find_sequence(&context, 0);
-
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2); // First assistant message
-        assert_eq!(end, 5); // Last message in the context
-    }
-
-    #[test]
-    fn test_identify_sequence_with_tool_calls() {
-        let model_id = ModelId::new("gpt-4");
-        // Create a context with assistant messages containing tool calls
-        let tool_call = ToolCallFull {
-            name: ToolName::new("forge_tool_fs_read"),
-            call_id: Some(ToolCallId::new("call_123")),
-            arguments: json!({"path": "/test/path"}),
-        };
-
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message"))
-            .add_message(ContextMessage::user(
-                "User message 1",
-                model_id.clone().into(),
-            ))
-            .add_message(ContextMessage::assistant(
-                "Assistant message with tool call",
-                Some(vec![tool_call.clone()]),
-            ))
-            .add_message(ContextMessage::assistant(
-                "Assistant message with another tool call",
-                Some(vec![tool_call.clone()]),
-            ))
-            .add_message(ContextMessage::user("User message 2", model_id.into()));
-
-        // With the updated logic, the sequence is from index 2 to index 4 (all messages
-        // from first assistant)
-        let sequence = find_sequence(&context, 0);
-
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2);
-        assert_eq!(end, 4); // Now includes the user message at the end
-    }
-
-    #[test]
-    fn test_identify_sequence_with_tool_results() {
-        let model_id = ModelId::new("gpt-4");
-
-        // Create a context with assistant messages and tool results
         let tool_call = ToolCallFull {
             name: ToolName::new("forge_tool_fs_read"),
             call_id: Some(ToolCallId::new("call_123")),
@@ -367,611 +261,184 @@ mod tests {
             .call_id(ToolCallId::new("call_123"))
             .success(json!({"content": "File content"}).to_string());
 
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message"))
-            .add_message(ContextMessage::user(
-                "User message 1",
-                model_id.clone().into(),
-            ))
-            .add_message(ContextMessage::assistant(
-                "Assistant message with tool call",
-                Some(vec![tool_call]),
-            ))
-            .add_message(ContextMessage::tool_result(tool_result))
-            .add_message(ContextMessage::assistant(
-                "Assistant follow-up message",
-                None,
-            ))
-            .add_message(ContextMessage::assistant("Another assistant message", None))
-            .add_message(ContextMessage::user("User message 2", model_id.into()));
+        let mut context = Context::default();
 
-        // With the updated logic, we include all messages from the first assistant
-        // (index 2) through to the end (index 6)
-        let sequence = find_sequence(&context, 0);
+        for c in pattern.chars() {
+            match c {
+                's' => context = context.add_message(ContextMessage::system("System message")),
+                'u' => {
+                    context = context.add_message(ContextMessage::user(
+                        "User message",
+                        model_id.clone().into(),
+                    ))
+                }
+                'a' => {
+                    context =
+                        context.add_message(ContextMessage::assistant("Assistant message", None))
+                }
+                't' => {
+                    context = context.add_message(ContextMessage::assistant(
+                        "Assistant message with tool call",
+                        Some(vec![tool_call.clone()]),
+                    ))
+                }
+                'r' => {
+                    context = context.add_message(ContextMessage::tool_result(tool_result.clone()))
+                }
+                _ => panic!("Invalid character in test pattern: {c}"),
+            }
+        }
 
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2);
-        assert_eq!(end, 6); // Now includes the user message at the end
+        let sequence = find_sequence(&context, preserve_last_n);
+
+        let mut result = pattern.clone();
+        if let Some((start, end)) = sequence {
+            result.insert(start, '[');
+            result.insert(end + 2, ']');
+        }
+
+        result
     }
 
     #[test]
-    fn test_mixed_assistant_and_tool_messages() {
-        let model_id = ModelId::new("gpt-4");
-        // Create a context with mixed assistant and tool messages
-        let tool_call1 = ToolCallFull {
-            name: ToolName::new("forge_tool_fs_read"),
-            call_id: Some(ToolCallId::new("call_123")),
-            arguments: json!({"path": "/test/path1"}),
-        };
-
-        let tool_call2 = ToolCallFull {
-            name: ToolName::new("forge_tool_fs_search"),
-            call_id: Some(ToolCallId::new("call_456")),
-            arguments: json!({"path": "/test/path2", "regex": "pattern"}),
-        };
-
-        let tool_result1 = ToolResult::new(ToolName::new("forge_tool_fs_read"))
-            .call_id(ToolCallId::new("call_123"))
-            .success(json!({"content": "File content 1"}).to_string());
-
-        let tool_result2 = ToolResult::new(ToolName::new("forge_tool_fs_search"))
-            .call_id(ToolCallId::new("call_456"))
-            .success(json!({"matches": ["match1", "match2"]}).to_string());
-
-        // Create a context where we have a mix of assistant and tool messages
-        let context = Context::default()
-            .add_message(ContextMessage::user(
-                "User message 1",
-                model_id.clone().into(),
-            )) // 0
-            .add_message(ContextMessage::assistant(
-                "Assistant message with tool call",
-                Some(vec![tool_call1]),
-            )) // 1
-            .add_message(ContextMessage::tool_result(tool_result1)) // 2
-            .add_message(ContextMessage::user(
-                "User follow-up question",
-                model_id.clone().into(),
-            )) // 3
-            .add_message(ContextMessage::assistant(
-                "Assistant with another tool call",
-                Some(vec![tool_call2]),
-            )) // 4
-            .add_message(ContextMessage::tool_result(tool_result2)) // 5
-            .add_message(ContextMessage::user("User message 2", model_id.into())); // 6
-
-        // With the updated compaction logic, we include all messages starting from
-        // the first assistant message through the end of the context
-        let sequence = find_sequence(&context, 0);
-
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 1); // First assistant message
-        assert_eq!(end, 6); // Last message in context
-    }
-
-    #[test]
-    fn test_consecutive_assistant_messages_with_tools() {
-        let model_id = ModelId::new("gpt-4");
-        // Test when we have consecutive assistant messages with tool calls
-        // followed by tool results but the assistant messages themselves are
-        // consecutive
-        let tool_call1 = ToolCallFull {
-            name: ToolName::new("forge_tool_fs_read"),
-            call_id: Some(ToolCallId::new("call_123")),
-            arguments: json!({"path": "/test/path1"}),
-        };
-
-        let tool_call2 = ToolCallFull {
-            name: ToolName::new("forge_tool_fs_search"),
-            call_id: Some(ToolCallId::new("call_456")),
-            arguments: json!({"path": "/test/path2", "regex": "pattern"}),
-        };
-
-        let tool_result1 = ToolResult::new(ToolName::new("forge_tool_fs_read"))
-            .call_id(ToolCallId::new("call_123"))
-            .success(json!({"content": "File content 1"}).to_string());
-
-        let tool_result2 = ToolResult::new(ToolName::new("forge_tool_fs_search"))
-            .call_id(ToolCallId::new("call_456"))
-            .success(json!({"matches": ["match1", "match2"]}).to_string());
-
-        let context = Context::default()
-            .add_message(ContextMessage::user(
-                "User message 1",
-                model_id.clone().into(),
-            ))
-            .add_message(ContextMessage::assistant(
-                "Assistant message with tool call",
-                Some(vec![tool_call1.clone()]),
-            ))
-            .add_message(ContextMessage::assistant(
-                "Another assistant message",
-                Some(vec![tool_call2.clone()]),
-            ))
-            .add_message(ContextMessage::assistant("Third assistant message", None))
-            .add_message(ContextMessage::tool_result(tool_result1))
-            .add_message(ContextMessage::tool_result(tool_result2))
-            .add_message(ContextMessage::user("User message 2", model_id.into()));
-
-        // With the updated logic, we include all messages from first assistant through
-        // the end
-        let sequence = find_sequence(&context, 0);
-
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 1); // First assistant message
-        assert_eq!(end, 6); // Last message in context excluding the
-                            // preservation window
-    }
-
-    #[test]
-    fn test_only_tool_results() {
-        let model_id = ModelId::new("gpt-4");
-        // Test when we have just tool results in sequence
-        let tool_result1 = ToolResult::new(ToolName::new("forge_tool_fs_read"))
-            .call_id(ToolCallId::new("call_123"))
-            .success(json!({"content": "File content 1"}).to_string());
-
-        let tool_result2 = ToolResult::new(ToolName::new("forge_tool_fs_search"))
-            .call_id(ToolCallId::new("call_456"))
-            .success(json!({"matches": ["match1", "match2"]}).to_string());
-
-        let context = Context::default()
-            .add_message(ContextMessage::user(
-                "User message 1",
-                model_id.clone().into(),
-            ))
-            .add_message(ContextMessage::tool_result(tool_result1))
-            .add_message(ContextMessage::tool_result(tool_result2))
-            .add_message(ContextMessage::user("User message 2", model_id.into()));
-
-        // With the updated logic, tool results by themselves are not valid for
-        // compaction since they don't start with an assistant message
-        let sequence = find_sequence(&context, 0);
-        assert!(sequence.is_none());
-    }
-
-    #[test]
-    fn test_mixed_assistant_and_single_tool() {
-        let model_id = ModelId::new("gpt-4");
-        // Create a context with an assistant message and a tool result that are not
-        // directly connected
-        let tool_call = ToolCallFull {
-            name: ToolName::new("forge_tool_fs_read"),
-            call_id: Some(ToolCallId::new("call_123")),
-            arguments: json!({"path": "/test/path"}),
-        };
-
-        let tool_result = ToolResult::new(ToolName::new("forge_tool_fs_read"))
-            .call_id(ToolCallId::new("call_123"))
-            .success(json!({"content": "File content 1"}).to_string());
-
-        let context = Context::default()
-            .add_message(ContextMessage::user(
-                "User message 1",
-                model_id.clone().into(),
-            )) // 0
-            .add_message(ContextMessage::assistant(
-                "Assistant message with tool call",
-                Some(vec![tool_call]),
-            )) // 1
-            .add_message(ContextMessage::user(
-                "User intermediate message",
-                model_id.clone().into(),
-            )) // 2
-            .add_message(ContextMessage::tool_result(tool_result)) // 3
-            .add_message(ContextMessage::user("User message 2", model_id.into())); // 4
-
-        // With the updated compaction logic, we need 2+ messages after the first
-        // assistant message This test has 4 messages after the first assistant
-        // message (indices 1-4)
-        let sequence = find_sequence(&context, 0);
-
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 1); // First assistant message
-        assert_eq!(end, 4); // Last message in context
-    }
-    #[test]
-    fn test_preserve_last_n_messages() {
-        let model_id = ModelId::new("gpt-4");
-        // Create a context with multiple sequences that could be compressed
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message"))
-            .add_message(ContextMessage::user(
-                "User message 1",
-                model_id.clone().into(),
-            ))
-            .add_message(ContextMessage::assistant("Assistant message 1", None)) // 2
-            .add_message(ContextMessage::assistant("Assistant message 2", None)) // 3
-            .add_message(ContextMessage::assistant("Assistant message 3", None)) // 4
-            .add_message(ContextMessage::user(
-                "User message 2",
-                model_id.clone().into(),
-            )) // 5
-            .add_message(ContextMessage::assistant("Assistant message 4", None)) // 6
-            .add_message(ContextMessage::assistant("Assistant message 5", None)); // 7
-
-        // With the updated logic, we should compact from the first assistant message
-        // through the end of the context (respecting preservation window)
-        let sequence = find_sequence(&context, 0);
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2);
-        assert_eq!(end, 7); // Now includes all messages to the end
-
-        // With preserve_last_n = 3, we should preserve the last 3 messages (indices 5,
-        // 6, 7) So we should get a sequence from 2 to 4
-        let sequence = find_sequence(&context, 3);
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2);
-        assert_eq!(end, 4);
-
-        // With preserve_last_n = 5, we should preserve indices 3-7
-        // So we should get no compressible sequence, since we can only consider indices
-        // 0-2
-        let sequence = find_sequence(&context, 5);
-        assert!(sequence.is_none());
-
-        // With preserve_last_n = 8 (more than total messages), we should get no
-        // compressible sequence
-        let sequence = find_sequence(&context, 8);
-        assert!(sequence.is_none());
-    }
-    #[test]
-    fn test_preserve_last_n_with_sequence_at_end() {
-        let model_id = ModelId::new("gpt-4");
-        // Create a context with a sequence at the end
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message")) // 0
-            .add_message(ContextMessage::user(
-                "User message 1",
-                model_id.clone().into(),
-            )) // 1
-            .add_message(ContextMessage::assistant("Assistant message 1", None)) // 2
-            .add_message(ContextMessage::user("User message 2", model_id.into())) // 3
-            .add_message(ContextMessage::assistant("Assistant message 2", None)) // 4
-            .add_message(ContextMessage::assistant("Assistant message 3", None)) // 5
-            .add_message(ContextMessage::assistant("Assistant message 4", None)); // 6
-
-        // With the updated logic, we should compact from the first assistant message
-        // through the end (respecting preservation window)
-        let sequence = find_sequence(&context, 0);
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2); // First assistant message
-        assert_eq!(end, 6); // Last message
-
-        // With preserve_last_n = 2, we should preserve the last 2 messages (indices
-        // 5-6) So we would compact from first assistant (index 2) to index 4
-        let sequence = find_sequence(&context, 2);
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2);
-        assert_eq!(end, 4);
-
-        // With preserve_last_n = 1, we should preserve index 6
-        // So we should compact from index 2 to index 5
-        let sequence = find_sequence(&context, 1);
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2);
-        assert_eq!(end, 5);
-    }
-
-    #[test]
-    fn test_preserve_tool_call_atomicity() {
-        let model_id = ModelId::new("gpt-4");
-
-        let tool_calls = Some(vec![ToolCallFull {
-            name: ToolName::new("forge_tool_fs_read"),
-            call_id: None,
-            arguments: json!({"path": "/test/path"}),
-        }]);
-
-        let tool_results = vec![ToolResult::new(ToolName::new("forge_tool_fs_read"))
-            .call_id(ToolCallId::new("call_123"))
-            .success(json!({"content": "File content 1"}).to_string())];
-
-        // Create a context with a sequence at the end
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message")) // 0
-            .add_message(ContextMessage::user("User Message 1", model_id.into())) // 1
-            .add_message(ContextMessage::assistant(
-                "Assistant Message 1",
-                tool_calls.clone(),
-            )) // 2
-            .add_tool_results(tool_results.clone()) // 3
-            .add_message(ContextMessage::assistant(
-                "Assistant Message 2",
-                tool_calls.clone(),
-            )) // 4
-            .add_tool_results(tool_results.clone()) // 5
-            .add_message(ContextMessage::assistant(
-                "Assistant Message 3",
-                tool_calls.clone(),
-            )) // 6
-            .add_tool_results(tool_results.clone()) // 7
-            .add_message(ContextMessage::assistant(
-                "Assistant Message 4",
-                tool_calls.clone(),
-            )) // 8
-            .add_tool_results(tool_results); // 9
-
-        // All the messages should be considered
-        let sequence = find_sequence(&context, 0).unwrap();
-        assert_eq!(sequence, (2, 9));
-
-        // Since we can not break in between a tool call is corresponding tool-result
-        let sequence = find_sequence(&context, 1).unwrap();
-        assert_eq!(sequence, (2, 7));
-
-        let sequence = find_sequence(&context, 2).unwrap();
-        assert_eq!(sequence, (2, 7));
-    }
-
-    #[test]
-    fn test_conversation_compaction_from_first_assistant_to_last() {
-        let model_id = ModelId::new("gpt-4");
-        // Create a context with a mixed conversation including user and assistant
-        // messages
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message")) // 0
-            .add_message(ContextMessage::user(
-                "Initial user request",
-                model_id.clone().into(),
-            )) // 1
-            .add_message(ContextMessage::assistant("Assistant response 1", None)) // 2
-            .add_message(ContextMessage::user(
-                "User follow-up question",
-                model_id.clone().into(),
-            )) // 3
-            .add_message(ContextMessage::assistant("Assistant response 2", None)) // 4
-            .add_message(ContextMessage::user(
-                "Another user question",
-                model_id.clone().into(),
-            )) // 5
-            .add_message(ContextMessage::assistant("Assistant response 3", None)) // 6
-            .add_message(ContextMessage::user("Final user question", model_id.into())) // 7
-            .add_message(ContextMessage::assistant("Assistant response 4", None)); // 8
-
-        // With no preservation, we should compact from the first assistant message
-        // (index 2) to the last message (index 8)
-        let sequence = find_sequence(&context, 0);
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2);
-        assert_eq!(end, 8);
-
-        // With preserve_last_n = 2, we should preserve the last 2 messages (indices
-        // 7-8) So we should compact from index 2 to index 6
-        let sequence = find_sequence(&context, 2);
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2);
-        assert_eq!(end, 6);
-
-        // With preserve_last_n = 6, we should preserve the last 6 messages (indices
-        // 3-8) So we would compact from first assistant (index 2) to index 2,
-        // but since that's just one message, no effective sequence is found
-        let sequence = find_sequence(&context, 6);
-        // With the updated logic, we still get a valid compaction sequence
-        // but it's just a single message which isn't enough to compact effectively
-        assert!(sequence.is_none());
-    }
-
-    #[test]
-    fn test_conversation_with_mixed_message_types() {
-        let model_id = ModelId::new("gpt-4");
-        // Create a context with a mixed conversation including user messages, assistant
-        // messages, tool calls, and tool results
-        let tool_call = ToolCallFull {
-            name: ToolName::new("forge_tool_fs_read"),
-            call_id: Some(ToolCallId::new("call_123")),
-            arguments: json!({"path": "/test/path"}),
-        };
-
-        let tool_result = ToolResult::new(ToolName::new("forge_tool_fs_read"))
-            .call_id(ToolCallId::new("call_123"))
-            .success(json!({"content": "File content"}).to_string());
-
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message")) // 0
-            .add_message(ContextMessage::user(
-                "Initial user request",
-                model_id.clone().into(),
-            )) // 1
-            .add_message(ContextMessage::assistant(
-                "Assistant response with tool call",
-                Some(vec![tool_call.clone()]),
-            )) // 2
-            .add_message(ContextMessage::tool_result(tool_result.clone())) // 3
-            .add_message(ContextMessage::user(
-                "User follow-up",
-                model_id.clone().into(),
-            )) // 4
-            .add_message(ContextMessage::assistant("Assistant response", None)) // 5
-            .add_message(ContextMessage::user("Another question", model_id.into())) // 6
-            .add_message(ContextMessage::assistant(
-                "Another assistant response with tool call",
-                Some(vec![tool_call]),
-            )) // 7
-            .add_message(ContextMessage::tool_result(tool_result.clone())); // 8
-
-        // With no preservation, we should compact from the first assistant message
-        // (index 2) to the last message (index 8)
-        let sequence = find_sequence(&context, 0);
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2);
-        assert_eq!(end, 8);
-
-        // With preserve_last_n = 3, we should preserve the last 3 messages (indices
-        // 6-8) So we should compact from index 2 to index 5
-        let sequence = find_sequence(&context, 3);
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2);
-        assert_eq!(end, 5);
-    }
-
-    #[test]
-    fn test_first_message_is_assistant() {
-        let model_id = ModelId::new("gpt-4");
-        // Test case where the first message is from the assistant (after system
-        // message)
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message")) // 0
-            .add_message(ContextMessage::assistant("First assistant message", None)) // 1
-            .add_message(ContextMessage::user("User response", model_id.into())) // 2
-            .add_message(ContextMessage::assistant("Second assistant message", None)); // 3
-
-        // With no preservation, we should compact from index 1 to index 3
-        let sequence = find_sequence(&context, 0);
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 1);
-        assert_eq!(end, 3);
-    }
-
-    #[test]
-    fn test_assistant_message_with_tool_call_at_end() {
-        let model_id = ModelId::new("gpt-4");
-        // Test case where the last message has a tool call and needs special handling
-        let tool_call = ToolCallFull {
-            name: ToolName::new("forge_tool_fs_read"),
-            call_id: Some(ToolCallId::new("call_123")),
-            arguments: json!({"path": "/test/path"}),
-        };
-
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message")) // 0
-            .add_message(ContextMessage::user(
-                "Initial user request",
-                model_id.clone().into(),
-            )) // 1
-            .add_message(ContextMessage::assistant("First assistant message", None)) // 2
-            .add_message(ContextMessage::user(
-                "User follow-up",
-                model_id.clone().into(),
-            )) // 3
-            .add_message(ContextMessage::assistant(
-                "Assistant response with tool call",
-                Some(vec![tool_call.clone()]),
-            )); // 4
-
-        // With no preservation, we should get a compaction range but exclude the tool
-        // call message since it wouldn't have a corresponding tool result
-        let sequence = find_sequence(&context, 0);
-        let (start, end) = sequence.unwrap();
-        assert_eq!(start, 2);
-        assert_eq!(end, 3);
-    }
-    #[test]
-    fn test_empty_context() {
-        // Test edge case: an empty context
-        let context = Context::default();
-        let result = find_sequence(&context, 0);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_single_message_context() {
-        // Test edge case: context with only one message
-        let context = Context::default().add_message(ContextMessage::system("System message"));
-        let result = find_sequence(&context, 0);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_preserve_equals_length() {
-        let model_id = ModelId::new("gpt-4");
-        // Test edge case: preservation window equals message count
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message"))
-            .add_message(ContextMessage::user("User message", model_id.into()))
-            .add_message(ContextMessage::assistant("Assistant message", None));
-
-        // Context has 3 messages, preserve_last_n = 3
-        let result = find_sequence(&context, 3);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_max_len_zero_after_tool_call() {
-        let model_id = ModelId::new("gpt-4");
-        // Create a context with 2 messages where the second one has a tool call
-        let tool_call = ToolCallFull {
-            name: ToolName::new("forge_tool_fs_read"),
-            call_id: Some(ToolCallId::new("call_123")),
-            arguments: json!({"path": "/test/path"}),
-        };
-
-        let context = Context::default()
-            .add_message(ContextMessage::user(
-                "User message",
-                model_id.clone().into(),
-            ))
-            .add_message(ContextMessage::assistant(
-                "Assistant message with tool call",
-                Some(vec![tool_call]),
-            ));
-
-        // With preserve_last_n = 0, max_len = 2, but after tool call adjustment it
-        // could become 1 which might lead to underflow in some parts of the
-        // code
-        let result = find_sequence(&context, 0);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_empty_start_end_positions() {
-        let model_id = ModelId::new("gpt-4");
-        // Test edge case: empty start/end positions
-        // Create a context with only system and user messages (no assistant messages)
-        // which would result in empty start/end position vectors
-        let context = Context::default()
-            .add_message(ContextMessage::system("System message"))
-            .add_message(ContextMessage::user(
-                "User message 1",
-                model_id.clone().into(),
-            ))
-            .add_message(ContextMessage::user(
-                "User message 2",
-                model_id.clone().into(),
-            ))
-            .add_message(ContextMessage::user("User message 3", model_id.into()));
-
-        let result = find_sequence(&context, 0);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_potential_underflow_edge_cases() {
-        let model_id = ModelId::new("gpt-4");
-        // Test edge case: potential integer underflow scenarios
-
-        // Case 1: preserve_last_n = 1, total messages = 2, with the last message having
-        // a tool call
-        let tool_call = ToolCallFull {
-            name: ToolName::new("forge_tool_fs_read"),
-            call_id: Some(ToolCallId::new("call_123")),
-            arguments: json!({"path": "/test/path"}),
-        };
-
-        let context = Context::default()
-            .add_message(ContextMessage::user(
-                "User message",
-                model_id.clone().into(),
-            ))
-            .add_message(ContextMessage::assistant(
-                "Assistant message with tool call",
-                Some(vec![tool_call]),
-            ));
-
-        // With preserve_last_n = 1, max_len = 2-1 = 1,
-        // then if we try to check messages[max_len-1] this could cause underflow if not
-        // handled
-        let result = find_sequence(&context, 1);
-        assert!(result.is_none());
-
-        // Case 2: Context with exactly 2 messages (user, assistant)
-        let context = Context::default()
-            .add_message(ContextMessage::user("User message", model_id.into()))
-            .add_message(ContextMessage::assistant("Assistant message", None));
-
-        // With preserve_last_n = 0, max_len = 2, but we need at least 3 messages for
-        // compression
-        let result = find_sequence(&context, 0);
-        assert!(result.is_none());
+    fn test_sequence_finding() {
+        // Basic compaction scenarios
+        let actual = seq("suaaau", 0);
+        let expected = "su[aaau]";
+        assert_eq!(actual, expected);
+
+        let actual = seq("sua", 0);
+        let expected = "sua";
+        assert_eq!(actual, expected);
+
+        let actual = seq("suauaa", 0);
+        let expected = "su[auaa]";
+        assert_eq!(actual, expected);
+
+        // Tool call scenarios
+        let actual = seq("suttu", 0);
+        let expected = "su[ttu]";
+        assert_eq!(actual, expected);
+
+        let actual = seq("sutraau", 0);
+        let expected = "su[traau]";
+        assert_eq!(actual, expected);
+
+        let actual = seq("utrutru", 0);
+        let expected = "u[trutru]";
+        assert_eq!(actual, expected);
+
+        let actual = seq("uttarru", 0);
+        let expected = "u[ttarru]";
+        assert_eq!(actual, expected);
+
+        let actual = seq("urru", 0);
+        let expected = "urru";
+        assert_eq!(actual, expected);
+
+        let actual = seq("uturu", 0);
+        let expected = "u[turu]";
+        assert_eq!(actual, expected);
+
+        // Preservation window scenarios
+        let actual = seq("suaaaauaa", 0);
+        let expected = "su[aaaauaa]";
+        assert_eq!(actual, expected);
+
+        let actual = seq("suaaaauaa", 3);
+        let expected = "su[aaaa]uaa";
+        assert_eq!(actual, expected);
+
+        let actual = seq("suaaaauaa", 5);
+        let expected = "su[aa]aauaa";
+        assert_eq!(actual, expected);
+
+        let actual = seq("suaaaauaa", 8);
+        let expected = "suaaaauaa";
+        assert_eq!(actual, expected);
+
+        let actual = seq("suauaaa", 0);
+        let expected = "su[auaaa]";
+        assert_eq!(actual, expected);
+
+        let actual = seq("suauaaa", 2);
+        let expected = "su[aua]aa";
+        assert_eq!(actual, expected);
+
+        let actual = seq("suauaaa", 1);
+        let expected = "su[auaa]a";
+        assert_eq!(actual, expected);
+
+        // Tool call atomicity preservation
+        let actual = seq("sutrtrtra", 0);
+        let expected = "su[trtrtra]";
+        assert_eq!(actual, expected);
+
+        let actual = seq("sutrtrtra", 1);
+        let expected = "su[trtrtr]a";
+        assert_eq!(actual, expected);
+
+        let actual = seq("sutrtrtra", 2);
+        let expected = "su[trtr]tra";
+        assert_eq!(actual, expected);
+
+        // Conversation patterns
+        let actual = seq("suauauaua", 0);
+        let expected = "su[auauaua]";
+        assert_eq!(actual, expected);
+
+        let actual = seq("suauauaua", 2);
+        let expected = "su[auaua]ua";
+        assert_eq!(actual, expected);
+
+        let actual = seq("suauauaua", 6);
+        let expected = "suauauaua";
+        assert_eq!(actual, expected);
+
+        let actual = seq("sutruaua", 0);
+        let expected = "su[truaua]";
+        assert_eq!(actual, expected);
+
+        let actual = seq("sutruaua", 3);
+        let expected = "su[tru]aua";
+        assert_eq!(actual, expected);
+
+        // Special cases
+        let actual = seq("saua", 0);
+        let expected = "s[aua]";
+        assert_eq!(actual, expected);
+
+        let actual = seq("suaut", 0);
+        let expected = "su[au]t";
+        assert_eq!(actual, expected);
+
+        // Edge cases
+        let actual = seq("", 0);
+        let expected = "";
+        assert_eq!(actual, expected);
+
+        let actual = seq("s", 0);
+        let expected = "s";
+        assert_eq!(actual, expected);
+
+        let actual = seq("sua", 3);
+        let expected = "sua";
+        assert_eq!(actual, expected);
+
+        let actual = seq("ut", 0);
+        let expected = "ut";
+        assert_eq!(actual, expected);
+
+        let actual = seq("suuu", 0);
+        let expected = "suuu";
+        assert_eq!(actual, expected);
+
+        let actual = seq("ut", 1);
+        let expected = "ut";
+        assert_eq!(actual, expected);
+
+        let actual = seq("ua", 0);
+        let expected = "ua";
+        assert_eq!(actual, expected);
     }
 }
