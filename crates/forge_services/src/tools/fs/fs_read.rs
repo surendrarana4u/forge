@@ -44,17 +44,16 @@ pub fn assert_valid_range(start_char: u64, end_char: u64) -> anyhow::Result<()> 
 
 // Using FSReadInput from forge_domain
 
-/// Reads file contents at specified path. Use for analyzing code, config files,
-/// documentation or text data. Extracts text from PDF/DOCX files and preserves
-/// original formatting. Returns content as string. Always use absolute paths.
-/// Read-only with no file modifications.
-///
-/// Files larger than 40,000 characters will automatically be read using range
-/// functionality, returning only the first 40,000 characters by default. For
-/// large files, you can specify custom ranges using start_char and end_char
-/// parameters. The total range must not exceed 40,000 characters (an error will
-/// be thrown if (end_char - start_char) > 40,000). Binary files are
-/// automatically detected and rejected.
+/// Reads file contents from the specified absolute path. Ideal for analyzing
+/// code, configuration files, documentation, or textual data. Automatically
+/// extracts text from PDF and DOCX files, preserving the original formatting.
+/// Returns the content as a string. For files larger than 40,000 characters,
+/// the tool automatically returns only the first 40,000 characters. You should
+/// generally rely on this default behavior and avoid specifying custom ranges
+/// unless absolutely necessary. If needed, specify a range with the start_char
+/// and end_char parameters, ensuring the total range does not exceed 40,000
+/// characters. Specifying a range exceeding this limit will result in an error.
+/// Binary files are automatically detected and rejected.
 #[derive(ToolDescription)]
 pub struct FSRead<F>(Arc<F>);
 
