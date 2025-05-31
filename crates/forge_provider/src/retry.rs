@@ -1,6 +1,9 @@
 use forge_domain::Error as DomainError;
 
-use crate::error::Error;
+use crate::error::{Error, ErrorResponse};
+
+const TRANSPORT_ERROR_CODES: [&str; 3] = ["ERR_STREAM_PREMATURE_CLOSE", "ECONNRESET", "ETIMEDOUT"];
+
 pub fn into_retry(error: anyhow::Error, retry_status_codes: &[u16]) -> anyhow::Error {
     if let Some(code) = get_req_status_code(&error)
         .or(get_event_req_status_code(&error))
@@ -53,19 +56,31 @@ fn get_event_req_status_code(error: &anyhow::Error) -> Option<u16> {
         })
 }
 
+fn has_transport_error_code(error: &ErrorResponse) -> bool {
+    // Check if the current level has a transport error code
+    let has_direct_code = error
+        .code
+        .as_ref()
+        .and_then(|code| code.as_str())
+        .is_some_and(|code| {
+            TRANSPORT_ERROR_CODES
+                .into_iter()
+                .any(|message| message == code)
+        });
+
+    if has_direct_code {
+        return true;
+    }
+
+    // Recursively check nested errors
+    error.error.as_deref().is_some_and(has_transport_error_code)
+}
+
 fn is_api_transport_error(error: &anyhow::Error) -> bool {
     error
         .downcast_ref::<Error>()
         .is_some_and(|error| match error {
-            Error::Response(error) => error
-                .code
-                .as_ref()
-                .and_then(|code| code.as_str())
-                .is_some_and(|code| {
-                    ["ERR_STREAM_PREMATURE_CLOSE", "ECONNRESET", "ETIMEDOUT"]
-                        .into_iter()
-                        .any(|message| message == code)
-                }),
+            Error::Response(error) => has_transport_error_code(error),
             _ => false,
         })
 }
@@ -102,7 +117,7 @@ mod tests {
     fn test_into_retry_with_matching_api_status_code() {
         // Setup
         let retry_codes = vec![429, 500, 503];
-        let inner_error = ErrorResponse::default().code(Some(ErrorCode::Number(500)));
+        let inner_error = ErrorResponse::default().code(ErrorCode::Number(500));
         let error = anyhow::Error::from(Error::Response(inner_error));
 
         // Execute
@@ -116,7 +131,7 @@ mod tests {
     fn test_into_retry_with_non_matching_api_status_code() {
         // Setup
         let retry_codes = vec![429, 500, 503];
-        let inner_error = ErrorResponse::default().code(Some(ErrorCode::Number(400)));
+        let inner_error = ErrorResponse::default().code(ErrorCode::Number(400));
         let error = anyhow::Error::from(Error::Response(inner_error));
 
         // Execute
@@ -139,23 +154,20 @@ mod tests {
         // structure.
 
         // Verify our function can handle generic errors safely
-        let retry_codes = vec![429, 500, 503];
         let generic_error = anyhow!("A generic error that doesn't have status code");
-        let actual = into_retry(generic_error, &retry_codes);
+        let actual = into_retry(generic_error, &[]);
         assert!(!is_retryable(actual));
     }
 
     #[test]
     fn test_into_retry_with_api_transport_error() {
         // Setup
-        let retry_codes = vec![429, 500, 503];
-        let inner_error = ErrorResponse::default().code(Some(ErrorCode::String(
-            "ERR_STREAM_PREMATURE_CLOSE".to_string(),
-        )));
+        let inner_error = ErrorResponse::default()
+            .code(ErrorCode::String("ERR_STREAM_PREMATURE_CLOSE".to_string()));
         let error = anyhow::Error::from(Error::Response(inner_error));
 
         // Execute
-        let actual = into_retry(error, &retry_codes);
+        let actual = into_retry(error, &[]);
 
         // Verify
         assert!(is_retryable(actual));
@@ -179,11 +191,11 @@ mod tests {
         let retry_codes = vec![429, 500, 503];
 
         // Create deeply nested error with a retryable status code
-        let deepest_error = ErrorResponse::default().code(Some(ErrorCode::Number(503)));
+        let deepest_error = ErrorResponse::default().code(ErrorCode::Number(503));
 
-        let middle_error = ErrorResponse::default().error(Some(Box::new(deepest_error)));
+        let middle_error = ErrorResponse::default().error(Box::new(deepest_error));
 
-        let top_error = ErrorResponse::default().error(Some(Box::new(middle_error)));
+        let top_error = ErrorResponse::default().error(Box::new(middle_error));
 
         let error = anyhow::Error::from(Error::Response(top_error));
 
@@ -198,7 +210,7 @@ mod tests {
     fn test_into_retry_with_string_error_code_as_number() {
         // Setup
         let retry_codes = vec![429, 500, 503];
-        let inner_error = ErrorResponse::default().code(Some(ErrorCode::String("429".to_string())));
+        let inner_error = ErrorResponse::default().code(ErrorCode::String("429".to_string()));
         let error = anyhow::Error::from(Error::Response(inner_error));
 
         // Execute
@@ -212,11 +224,10 @@ mod tests {
     #[test]
     fn test_into_retry_with_non_retryable_error() {
         // Setup
-        let retry_codes = vec![429, 500, 503];
         let generic_error = anyhow!("A generic error that doesn't match any retryable pattern");
 
         // Execute
-        let actual = into_retry(generic_error, &retry_codes);
+        let actual = into_retry(generic_error, &[]);
 
         // Verify
         assert!(!is_retryable(actual));
@@ -246,5 +257,46 @@ mod tests {
 
         // Verify - should not be retryable as 400 is not in retry_codes
         assert!(!is_retryable(actual));
+    }
+
+    #[test]
+    fn test_into_retry_with_nested_api_transport_error() {
+        // Setup
+        // Create nested error with transport error code in error.error.code
+        let nested_error =
+            ErrorResponse::default().code(ErrorCode::String("ECONNRESET".to_string()));
+
+        let top_error = ErrorResponse::default().error(Box::new(nested_error));
+
+        let error = anyhow::Error::from(Error::Response(top_error));
+
+        // Execute
+        let actual = into_retry(error, &[]);
+
+        // Verify - should be retryable because ECONNRESET is a transport error
+        assert!(is_retryable(actual));
+    }
+
+    #[test]
+    fn test_into_retry_with_deeply_nested_api_transport_error() {
+        // Setup
+        // Create deeply nested error with transport error code at level 4
+        let deepest_error =
+            ErrorResponse::default().code(ErrorCode::String("ETIMEDOUT".to_string()));
+
+        let level3_error = ErrorResponse::default().error(Box::new(deepest_error));
+
+        let level2_error = ErrorResponse::default().error(Box::new(level3_error));
+
+        let top_error = ErrorResponse::default().error(Box::new(level2_error));
+
+        let error = anyhow::Error::from(Error::Response(top_error));
+
+        // Execute
+        let actual = into_retry(error, &[]);
+
+        // Verify - should be retryable because ETIMEDOUT is a transport error found at
+        // level 4
+        assert!(is_retryable(actual));
     }
 }
