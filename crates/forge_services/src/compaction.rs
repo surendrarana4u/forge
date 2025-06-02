@@ -185,7 +185,7 @@ fn find_sequence(context: &Context, preserve_last_n: usize) -> Option<(usize, us
     let start = messages
         .iter()
         .enumerate()
-        .find(|(_, message)| message.has_role(Role::Assistant))
+        .find(|(_, message)| !message.has_role(Role::System))
         .map(|(index, _)| index)?;
 
     // Don't compact if there's no assistant message
@@ -304,53 +304,53 @@ mod tests {
     fn test_sequence_finding() {
         // Basic compaction scenarios
         let actual = seq("suaaau", 0);
-        let expected = "su[aaau]";
+        let expected = "s[uaaau]";
         assert_eq!(actual, expected);
 
         let actual = seq("sua", 0);
-        let expected = "sua";
+        let expected = "s[ua]";
         assert_eq!(actual, expected);
 
         let actual = seq("suauaa", 0);
-        let expected = "su[auaa]";
+        let expected = "s[uauaa]";
         assert_eq!(actual, expected);
 
         // Tool call scenarios
         let actual = seq("suttu", 0);
-        let expected = "su[ttu]";
+        let expected = "s[uttu]";
         assert_eq!(actual, expected);
 
         let actual = seq("sutraau", 0);
-        let expected = "su[traau]";
+        let expected = "s[utraau]";
         assert_eq!(actual, expected);
 
         let actual = seq("utrutru", 0);
-        let expected = "u[trutru]";
+        let expected = "[utrutru]";
         assert_eq!(actual, expected);
 
         let actual = seq("uttarru", 0);
-        let expected = "u[ttarru]";
+        let expected = "[uttarru]";
         assert_eq!(actual, expected);
 
         let actual = seq("urru", 0);
-        let expected = "urru";
+        let expected = "[urru]";
         assert_eq!(actual, expected);
 
         let actual = seq("uturu", 0);
-        let expected = "u[turu]";
+        let expected = "[uturu]";
         assert_eq!(actual, expected);
 
         // Preservation window scenarios
         let actual = seq("suaaaauaa", 0);
-        let expected = "su[aaaauaa]";
+        let expected = "s[uaaaauaa]";
         assert_eq!(actual, expected);
 
         let actual = seq("suaaaauaa", 3);
-        let expected = "su[aaaa]uaa";
+        let expected = "s[uaaaa]uaa";
         assert_eq!(actual, expected);
 
         let actual = seq("suaaaauaa", 5);
-        let expected = "su[aa]aauaa";
+        let expected = "s[uaa]aauaa";
         assert_eq!(actual, expected);
 
         let actual = seq("suaaaauaa", 8);
@@ -358,49 +358,49 @@ mod tests {
         assert_eq!(actual, expected);
 
         let actual = seq("suauaaa", 0);
-        let expected = "su[auaaa]";
+        let expected = "s[uauaaa]";
         assert_eq!(actual, expected);
 
         let actual = seq("suauaaa", 2);
-        let expected = "su[aua]aa";
+        let expected = "s[uaua]aa";
         assert_eq!(actual, expected);
 
         let actual = seq("suauaaa", 1);
-        let expected = "su[auaa]a";
+        let expected = "s[uauaa]a";
         assert_eq!(actual, expected);
 
         // Tool call atomicity preservation
         let actual = seq("sutrtrtra", 0);
-        let expected = "su[trtrtra]";
+        let expected = "s[utrtrtra]";
         assert_eq!(actual, expected);
 
         let actual = seq("sutrtrtra", 1);
-        let expected = "su[trtrtr]a";
+        let expected = "s[utrtrtr]a";
         assert_eq!(actual, expected);
 
         let actual = seq("sutrtrtra", 2);
-        let expected = "su[trtr]tra";
+        let expected = "s[utrtr]tra";
         assert_eq!(actual, expected);
 
         // Conversation patterns
         let actual = seq("suauauaua", 0);
-        let expected = "su[auauaua]";
+        let expected = "s[uauauaua]";
         assert_eq!(actual, expected);
 
         let actual = seq("suauauaua", 2);
-        let expected = "su[auaua]ua";
+        let expected = "s[uauaua]ua";
         assert_eq!(actual, expected);
 
         let actual = seq("suauauaua", 6);
-        let expected = "suauauaua";
+        let expected = "s[ua]uauaua";
         assert_eq!(actual, expected);
 
         let actual = seq("sutruaua", 0);
-        let expected = "su[truaua]";
+        let expected = "s[utruaua]";
         assert_eq!(actual, expected);
 
         let actual = seq("sutruaua", 3);
-        let expected = "su[tru]aua";
+        let expected = "s[utru]aua";
         assert_eq!(actual, expected);
 
         // Special cases
@@ -409,7 +409,7 @@ mod tests {
         assert_eq!(actual, expected);
 
         let actual = seq("suaut", 0);
-        let expected = "su[au]t";
+        let expected = "s[uau]t";
         assert_eq!(actual, expected);
 
         // Edge cases
@@ -426,11 +426,11 @@ mod tests {
         assert_eq!(actual, expected);
 
         let actual = seq("ut", 0);
-        let expected = "ut";
+        let expected = "[u]t";
         assert_eq!(actual, expected);
 
         let actual = seq("suuu", 0);
-        let expected = "suuu";
+        let expected = "s[uuu]";
         assert_eq!(actual, expected);
 
         let actual = seq("ut", 1);
@@ -438,7 +438,7 @@ mod tests {
         assert_eq!(actual, expected);
 
         let actual = seq("ua", 0);
-        let expected = "ua";
+        let expected = "[ua]";
         assert_eq!(actual, expected);
     }
 }
