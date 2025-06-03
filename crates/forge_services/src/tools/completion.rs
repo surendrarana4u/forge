@@ -29,7 +29,7 @@ impl NamedTool for Completion {
 impl ExecutableTool for Completion {
     type Input = AttemptCompletionInput;
 
-    async fn call(&self, context: ToolCallContext, input: Self::Input) -> Result<ToolOutput> {
+    async fn call(&self, context: &mut ToolCallContext, input: Self::Input) -> Result<ToolOutput> {
         // Log the completion event
         context.send_summary(input.result.clone()).await?;
 
@@ -61,7 +61,7 @@ mod tests {
 
         // Execute the fixture
         let actual = tool
-            .call(ToolCallContext::default(), input)
+            .call(&mut ToolCallContext::default(), input)
             .await
             .unwrap()
             .into_string();

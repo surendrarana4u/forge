@@ -34,7 +34,7 @@ impl<F: Infrastructure> NamedTool for Followup<F> {
 impl<F: Infrastructure> ExecutableTool for Followup<F> {
     type Input = SelectInput;
 
-    async fn call(&self, context: ToolCallContext, input: Self::Input) -> Result<ToolOutput> {
+    async fn call(&self, context: &mut ToolCallContext, input: Self::Input) -> Result<ToolOutput> {
         let options = vec![
             input.option1,
             input.option2,

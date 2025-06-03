@@ -4,11 +4,12 @@ use std::sync::Arc;
 use anyhow::Context;
 use forge_display::TitleFormat;
 use forge_domain::{
-    EnvironmentService, ExecutableTool, FSFileInfoInput, NamedTool, ToolCallContext,
-    ToolDescription, ToolName, ToolOutput,
+    ExecutableTool, FSFileInfoInput, NamedTool, ToolCallContext, ToolDescription, ToolName,
+    ToolOutput,
 };
 use forge_tool_macros::ToolDescription;
 
+use crate::services::EnvironmentService;
 use crate::utils::{assert_absolute_path, format_display_path};
 use crate::Infrastructure;
 
@@ -56,7 +57,7 @@ impl<F: Infrastructure> ExecutableTool for FSFileInfo<F> {
 
     async fn call(
         &self,
-        context: ToolCallContext,
+        context: &mut ToolCallContext,
         input: Self::Input,
     ) -> anyhow::Result<ToolOutput> {
         let path = Path::new(&input.path);
@@ -91,7 +92,7 @@ mod test {
         let fs_info = FSFileInfo::new(stub);
         let result = fs_info
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSFileInfoInput {
                     path: file_path.to_string_lossy().to_string(),
                     explanation: None,
@@ -116,7 +117,7 @@ mod test {
         let fs_info = FSFileInfo::new(stub);
         let result = fs_info
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSFileInfoInput {
                     path: dir_path.to_string_lossy().to_string(),
                     explanation: None,
@@ -140,7 +141,7 @@ mod test {
         let fs_info = FSFileInfo::new(stub);
         let result = fs_info
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSFileInfoInput {
                     path: nonexistent_path.to_string_lossy().to_string(),
                     explanation: None,
@@ -158,7 +159,7 @@ mod test {
         let fs_info = FSFileInfo::new(stub);
         let result = fs_info
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSFileInfoInput { path: "relative/path.txt".to_string(), explanation: None },
             )
             .await;

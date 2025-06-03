@@ -32,7 +32,7 @@ impl ExecutableTool for FSList {
 
     async fn call(
         &self,
-        _context: ToolCallContext,
+        _context: &mut ToolCallContext,
         input: Self::Input,
     ) -> anyhow::Result<ToolOutput> {
         let dir = Path::new(&input.path);
@@ -106,7 +106,7 @@ mod test {
         let fs_list = FSList::new(true);
         let result = fs_list
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSListInput {
                     explanation: None,
                     path: temp_dir.path().to_string_lossy().to_string(),
@@ -136,7 +136,7 @@ mod test {
         let fs_list = FSList::new(true);
         let result = fs_list
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSListInput {
                     explanation: None,
                     path: temp_dir.path().to_string_lossy().to_string(),
@@ -158,7 +158,7 @@ mod test {
         let fs_list = FSList::new(true);
         let result = fs_list
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSListInput {
                     explanation: None,
                     path: nonexistent_dir.to_string_lossy().to_string(),
@@ -187,7 +187,7 @@ mod test {
         let fs_list = FSList::new(true);
         let result = fs_list
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSListInput {
                     explanation: None,
                     path: temp_dir.path().to_string_lossy().to_string(),
@@ -227,7 +227,7 @@ mod test {
         // Test recursive listing
         let result = fs_list
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSListInput {
                     explanation: None,
                     path: temp_dir.path().to_string_lossy().to_string(),
@@ -246,7 +246,7 @@ mod test {
         let fs_list = FSList::new(true);
         let result = fs_list
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSListInput {
                     path: "relative/path".to_string(),
                     recursive: None,

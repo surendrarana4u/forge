@@ -1,178 +1,125 @@
-use std::sync::Arc;
+use derive_setters::Setters;
+use merge::Merge;
+use serde::{Deserialize, Serialize};
+use tracing::debug;
 
-use anyhow::Result;
-use forge_domain::{
-    extract_tag_content, Agent, ChatCompletionMessage, Compact, CompactionService, Context,
-    ContextMessage, ProviderService, Role, TemplateService,
-};
-use futures::StreamExt;
-use tracing::{debug, info};
+use crate::{Context, ModelId, Role};
 
-/// Handles the compaction of conversation contexts to manage token usage
-#[derive(Clone)]
-pub struct ForgeCompactionService<T, P> {
-    template: Arc<T>,
-    provider: Arc<P>,
+/// Configuration for automatic context compaction
+#[derive(Debug, Clone, Serialize, Deserialize, Merge, Setters)]
+#[setters(strip_option, into)]
+pub struct Compact {
+    /// Number of most recent messages to preserve during compaction
+    /// These messages won't be considered for summarization
+    #[merge(strategy = crate::merge::std::overwrite)]
+    pub retention_window: usize,
+    /// Maximum number of tokens to keep after compaction
+    #[merge(strategy = crate::merge::option)]
+    pub max_tokens: Option<usize>,
+
+    /// Maximum number of tokens before triggering compaction
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[merge(strategy = crate::merge::option)]
+    pub token_threshold: Option<u64>,
+
+    /// Maximum number of conversation turns before triggering compaction
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[merge(strategy = crate::merge::option)]
+    pub turn_threshold: Option<usize>,
+
+    /// Maximum number of messages before triggering compaction
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[merge(strategy = crate::merge::option)]
+    pub message_threshold: Option<usize>,
+
+    /// Optional custom prompt template to use during compaction
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[merge(strategy = crate::merge::option)]
+    pub prompt: Option<String>,
+
+    /// Model ID to use for compaction, useful when compacting with a
+    /// cheaper/faster model
+    #[merge(strategy = crate::merge::std::overwrite)]
+    pub model: ModelId,
+    /// Optional tag name to extract content from when summarizing (e.g.,
+    /// "summary")
+    #[merge(strategy = crate::merge::std::overwrite)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary_tag: Option<SummaryTag>,
 }
 
-impl<T: TemplateService, P: ProviderService> ForgeCompactionService<T, P> {
-    /// Creates a new ContextCompactor instance
-    pub fn new(template: Arc<T>, provider: Arc<P>) -> Self {
-        Self { template, provider }
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(transparent)]
+pub struct SummaryTag(String);
+
+impl Default for SummaryTag {
+    fn default() -> Self {
+        SummaryTag("forge_context_summary".to_string())
+    }
+}
+
+impl SummaryTag {
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl Compact {
+    /// Creates a new compaction configuration with the specified maximum token
+    /// limit
+    pub fn new(model: ModelId) -> Self {
+        Self {
+            max_tokens: None,
+            token_threshold: None,
+            turn_threshold: None,
+            message_threshold: None,
+            prompt: None,
+            summary_tag: None,
+            model,
+            retention_window: 0,
+        }
     }
 
-    /// Apply compaction to the context if requested
-    pub async fn compact_context(&self, agent: &Agent, context: Context) -> Result<Context> {
-        // Return early if agent doesn't have compaction configured
-        if let Some(ref compact) = agent.compact {
-            debug!(agent_id = %agent.id, "Context compaction triggered");
+    /// Determines if compaction should be triggered based on the current
+    /// context
+    pub fn should_compact(&self, context: &Context, token_count: u64) -> bool {
+        // Check if any of the thresholds have been exceeded
+        if let Some(token_threshold) = self.token_threshold {
+            debug!(tokens = ?token_count, "Token count");
+            // use provided prompt_tokens if available, otherwise estimate token count
+            if token_count >= token_threshold {
+                return true;
+            }
+        }
 
-            // Identify and compress the first compressible sequence
-            // Get all compressible sequences, considering the preservation window
-            match find_sequence(&context, compact.retention_window)
-                .into_iter()
-                .next()
+        if let Some(turn_threshold) = self.turn_threshold {
+            if context
+                .messages
+                .iter()
+                .filter(|message| message.has_role(Role::User))
+                .count()
+                >= turn_threshold
             {
-                Some(sequence) => {
-                    debug!(agent_id = %agent.id, "Compressing sequence");
-                    self.compress_single_sequence(compact, context, sequence)
-                        .await
-                }
-                None => {
-                    debug!(agent_id = %agent.id, "No compressible sequences found");
-                    Ok(context)
-                }
-            }
-        } else {
-            Ok(context)
-        }
-    }
-
-    /// Compress a single identified sequence of assistant messages
-    async fn compress_single_sequence(
-        &self,
-        compact: &Compact,
-        mut context: Context,
-        sequence: (usize, usize),
-    ) -> Result<Context> {
-        let (start, end) = sequence;
-
-        // Extract the sequence to summarize
-        let sequence_messages = &context.messages[start..=end].to_vec();
-
-        // Generate summary for this sequence
-        let summary = self
-            .generate_summary_for_sequence(compact, sequence_messages)
-            .await?;
-
-        // Log the summary for debugging
-        info!(
-            summary = %summary,
-            sequence_start = sequence.0,
-            sequence_end = sequence.1,
-            sequence_length = sequence_messages.len(),
-            "Created context compaction summary"
-        );
-
-        let summary = format!(
-            r#"Continuing from a prior analysis. Below is a compacted summary of the ongoing session. Use this summary as authoritative context for your reasoning and decision-making. You do not need to repeat or reanalyze it unless specifically asked: <summary>{summary}</summary> Proceed based on this context.
-        "#
-        );
-
-        // Replace the sequence with a single summary message using splice
-        // This removes the sequence and inserts the summary message in-place
-        context.messages.splice(
-            start..=end,
-            std::iter::once(ContextMessage::assistant(summary, None)),
-        );
-
-        Ok(context)
-    }
-
-    /// Generate a summary for a specific sequence of assistant messages
-    async fn generate_summary_for_sequence(
-        &self,
-        compact: &Compact,
-        messages: &[ContextMessage],
-    ) -> Result<String> {
-        // Create a temporary context with just the sequence for summarization
-        let sequence_context = messages
-            .iter()
-            .fold(Context::default(), |ctx, msg| ctx.add_message(msg.clone()));
-
-        // Render the summarization prompt
-        let summary_tag = compact.summary_tag.as_ref().cloned().unwrap_or_default();
-        let ctx = serde_json::json!({
-            "context": sequence_context.to_text(),
-            "summary_tag": summary_tag
-        });
-
-        let prompt = self.template.render(
-            compact
-                .prompt
-                .as_deref()
-                .unwrap_or("{{> system-prompt-context-summarizer.hbs}}"),
-            &ctx,
-        )?;
-
-        // Create a new context
-        let mut context = Context::default()
-            .add_message(ContextMessage::user(prompt, compact.model.clone().into()));
-
-        // Set max_tokens for summary
-        if let Some(max_token) = compact.max_tokens {
-            context = context.max_tokens(max_token);
-        }
-
-        // Get summary from the provider
-        let response = self.provider.chat(&compact.model, context).await?;
-
-        self.collect_completion_stream_content(compact, response)
-            .await
-    }
-
-    /// Collects the content from a streaming ChatCompletionMessage response
-    /// and extracts text within the configured tag if present
-    async fn collect_completion_stream_content<F>(
-        &self,
-        compact: &Compact,
-        mut stream: F,
-    ) -> Result<String>
-    where
-        F: futures::Stream<Item = Result<ChatCompletionMessage>> + Unpin,
-    {
-        let mut result_content = String::new();
-
-        while let Some(message_result) = stream.next().await {
-            let message = message_result?;
-            if let Some(content) = message.content {
-                result_content.push_str(content.as_str());
+                return true;
             }
         }
 
-        // Extract content from within configured tags if present and if tag is
-        // configured
-        if let Some(extracted) = extract_tag_content(
-            &result_content,
-            compact
-                .summary_tag
-                .as_ref()
-                .cloned()
-                .unwrap_or_default()
-                .as_str(),
-        ) {
-            return Ok(extracted.to_string());
+        if let Some(message_threshold) = self.message_threshold {
+            // Count messages directly from context
+            let msg_count = context.messages.len();
+            if msg_count >= message_threshold {
+                return true;
+            }
         }
 
-        // If no tag extraction performed, return the original content
-        Ok(result_content)
+        false
     }
 }
 
 /// Finds a sequence in the context for compaction, starting from the first
 /// assistant message and including all messages up to the last possible message
 /// (respecting preservation window)
-fn find_sequence(context: &Context, preserve_last_n: usize) -> Option<(usize, usize)> {
+pub fn find_compact_sequence(context: &Context, preserve_last_n: usize) -> Option<(usize, usize)> {
     let messages = &context.messages;
     if messages.is_empty() {
         return None;
@@ -230,22 +177,13 @@ fn find_sequence(context: &Context, preserve_last_n: usize) -> Option<(usize, us
     }
 }
 
-#[async_trait::async_trait]
-impl<T: TemplateService, P: ProviderService> CompactionService for ForgeCompactionService<T, P> {
-    async fn compact_context(&self, agent: &Agent, context: Context) -> anyhow::Result<Context> {
-        // Call the compact_context method without passing prompt_tokens
-        // since the decision logic has been moved to the orchestrator
-        self.compact_context(agent, context).await
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use forge_domain::{ModelId, ToolCallFull, ToolCallId, ToolName, ToolResult};
     use pretty_assertions::assert_eq;
     use serde_json::json;
 
     use super::*;
+    use crate::{ContextMessage, ToolCallFull, ToolCallId, ToolName, ToolResult};
 
     fn seq(pattern: impl ToString, preserve_last_n: usize) -> String {
         let model_id = ModelId::new("gpt-4");
@@ -289,7 +227,7 @@ mod tests {
             }
         }
 
-        let sequence = find_sequence(&context, preserve_last_n);
+        let sequence = find_compact_sequence(&context, preserve_last_n);
 
         let mut result = pattern.clone();
         if let Some((start, end)) = sequence {

@@ -3,8 +3,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use forge_api::{
-    AgentMessage, ChatRequest, ChatResponse, Conversation, ConversationId, Event, Model, ModelId,
-    Workflow, API,
+    ChatRequest, ChatResponse, Conversation, ConversationId, Event, Model, ModelId, Workflow, API,
 };
 use forge_display::{MarkdownFormat, TitleFormat};
 use forge_domain::{McpConfig, McpServerConfig, Scope};
@@ -86,7 +85,6 @@ impl<F: API> UI<F> {
 
     // Set the current mode and update conversation variable
     async fn on_mode_change(&mut self, mode: Mode) -> Result<()> {
-        self.on_new().await?;
         // Set the mode variable in the conversation if a conversation exists
         let conversation_id = self.init_conversation().await?;
 
@@ -109,7 +107,7 @@ impl<F: API> UI<F> {
             .await?;
 
         self.writeln(TitleFormat::action(format!(
-            "Switched to '{}' mode (context cleared)",
+            "Switched to '{}' mode",
             self.state.mode
         )))?;
 
@@ -597,8 +595,8 @@ impl<F: API> UI<F> {
         Ok(())
     }
 
-    fn handle_chat_response(&mut self, message: AgentMessage<ChatResponse>) -> Result<()> {
-        match message.message {
+    fn handle_chat_response(&mut self, message: ChatResponse) -> Result<()> {
+        match message {
             ChatResponse::Text { mut text, is_complete, is_md, is_summary } => {
                 if is_complete && !text.trim().is_empty() {
                     if is_md || is_summary {

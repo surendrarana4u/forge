@@ -140,14 +140,14 @@ impl<F: Infrastructure> ExecutableTool for Fetch<F> {
 
     async fn call(
         &self,
-        context: ToolCallContext,
+        context: &mut ToolCallContext,
         input: Self::Input,
     ) -> anyhow::Result<ToolOutput> {
         let url = Url::parse(&input.url)
             .with_context(|| format!("Failed to parse URL: {}", input.url))?;
 
         let (content, prefix) = self
-            .fetch_url(&url, &context, input.raw.unwrap_or(false))
+            .fetch_url(&url, context, input.raw.unwrap_or(false))
             .await?;
 
         let original_length = content.len();
@@ -271,7 +271,7 @@ mod tests {
         };
 
         let result = fetch
-            .call(ToolCallContext::default(), input)
+            .call(&mut ToolCallContext::default(), input)
             .await
             .unwrap()
             .into_string();
@@ -305,7 +305,7 @@ mod tests {
         };
 
         let result = fetch
-            .call(ToolCallContext::default(), input)
+            .call(&mut ToolCallContext::default(), input)
             .await
             .unwrap()
             .into_string();
@@ -339,7 +339,7 @@ mod tests {
             explanation: None,
         };
 
-        let result = fetch.call(ToolCallContext::default(), input).await;
+        let result = fetch.call(&mut ToolCallContext::default(), input).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
@@ -375,7 +375,7 @@ mod tests {
         };
 
         let result = fetch
-            .call(ToolCallContext::default(), input)
+            .call(&mut ToolCallContext::default(), input)
             .await
             .unwrap()
             .into_string();
@@ -418,7 +418,7 @@ mod tests {
         };
 
         // Execute the fetch
-        let context = ToolCallContext::default();
+        let context = &mut ToolCallContext::default();
         let result: String = fetch.call(context, input).await.unwrap().into_string();
 
         // For testing purposes, we can modify the result to simulate the truncation
@@ -462,7 +462,7 @@ mod tests {
             explanation: None,
         };
 
-        let result = rt.block_on(fetch.call(ToolCallContext::default(), input));
+        let result = rt.block_on(fetch.call(&mut ToolCallContext::default(), input));
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("parse"));
@@ -487,7 +487,7 @@ mod tests {
             explanation: None,
         };
 
-        let result = fetch.call(ToolCallContext::default(), input).await;
+        let result = fetch.call(&mut ToolCallContext::default(), input).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("404"));
     }

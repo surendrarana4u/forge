@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use forge_display::TitleFormat;
 use forge_domain::{
-    EnvironmentService, ExecutableTool, NamedTool, ToolCallContext, ToolDescription, ToolName,
-    ToolOutput, UndoInput,
+    ExecutableTool, NamedTool, ToolCallContext, ToolDescription, ToolName, ToolOutput, UndoInput,
 };
 use forge_tool_macros::ToolDescription;
 
 use crate::infra::FsSnapshotService;
+use crate::services::EnvironmentService;
 use crate::utils::{assert_absolute_path, format_display_path};
 use crate::Infrastructure;
 
@@ -51,7 +51,7 @@ impl<F: Infrastructure> ExecutableTool for FsUndo<F> {
     type Input = UndoInput;
     async fn call(
         &self,
-        context: ToolCallContext,
+        context: &mut ToolCallContext,
         input: Self::Input,
     ) -> anyhow::Result<ToolOutput> {
         let path = Path::new(&input.path);
@@ -93,7 +93,7 @@ mod tests {
         // Act
         let result = undo
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 UndoInput {
                     path: test_path.to_string_lossy().to_string(),
                     explanation: None,

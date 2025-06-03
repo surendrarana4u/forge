@@ -45,13 +45,13 @@ pub mod tests {
 
     use bytes::Bytes;
     use forge_domain::{
-        CommandOutput, Environment, EnvironmentService, Provider, ToolDefinition, ToolName,
-        ToolOutput,
+        CommandOutput, Environment, Provider, ToolDefinition, ToolName, ToolOutput,
     };
     use forge_snaps::Snapshot;
     use serde_json::Value;
 
     use super::*;
+    use crate::services::EnvironmentService;
     use crate::{
         CommandExecutorService, FileRemoveService, FsCreateDirsService, FsMetaService,
         FsReadService, FsSnapshotService, FsWriteService, InquireService, McpClient, McpServer,

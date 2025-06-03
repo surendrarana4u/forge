@@ -36,7 +36,7 @@ impl<T: Infrastructure> ExecutableTool for FSRemove<T> {
 
     async fn call(
         &self,
-        _context: ToolCallContext,
+        _context: &mut ToolCallContext,
         input: Self::Input,
     ) -> anyhow::Result<ToolOutput> {
         let path = Path::new(&input.path);
@@ -92,7 +92,7 @@ mod test {
         let fs_remove = FSRemove::new(infra.clone());
         let result = fs_remove
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSRemoveInput {
                     path: file_path.to_string_lossy().to_string(),
                     explanation: None,
@@ -114,7 +114,7 @@ mod test {
         let fs_remove = FSRemove::new(infra);
         let result = fs_remove
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSRemoveInput {
                     path: nonexistent_file.to_string_lossy().to_string(),
                     explanation: None,
@@ -147,7 +147,7 @@ mod test {
         let fs_remove = FSRemove::new(infra.clone());
         let result = fs_remove
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSRemoveInput {
                     path: dir_path.to_string_lossy().to_string(),
                     explanation: None,
@@ -173,7 +173,7 @@ mod test {
         let fs_remove = FSRemove::new(infra);
         let result = fs_remove
             .call(
-                ToolCallContext::default(),
+                &mut ToolCallContext::default(),
                 FSRemoveInput { path: "relative/path.txt".to_string(), explanation: None },
             )
             .await;
