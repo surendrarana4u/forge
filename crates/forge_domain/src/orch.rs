@@ -133,7 +133,7 @@ impl<S: AgentService> Orchestrator<S> {
         Ok(tool_call_records)
     }
 
-    async fn send(&mut self, message: ChatResponse) -> anyhow::Result<()> {
+    async fn send(&self, message: ChatResponse) -> anyhow::Result<()> {
         if let Some(sender) = &self.sender {
             sender.send(Ok(message)).await?
         }
@@ -157,7 +157,7 @@ impl<S: AgentService> Orchestrator<S> {
     }
 
     // Returns if agent supports tool or not.
-    fn is_tool_supported(&mut self, agent: &Agent) -> anyhow::Result<bool> {
+    fn is_tool_supported(&self, agent: &Agent) -> anyhow::Result<bool> {
         let model_id = agent
             .model
             .as_ref()
@@ -380,8 +380,8 @@ impl<S: AgentService> Orchestrator<S> {
     }
 
     /// Process usage information from a chat completion message
-    fn update_usage(
-        &mut self,
+    fn estimate_usage(
+        &self,
         message: &ChatCompletionMessage,
         context: &Context,
         request_usage: Usage,
@@ -397,7 +397,7 @@ impl<S: AgentService> Orchestrator<S> {
     }
 
     async fn collect_messages(
-        &mut self,
+        &self,
         agent: &Agent,
         context: &Context,
         mut response: impl Stream<Item = anyhow::Result<ChatCompletionMessage>> + std::marker::Unpin,
@@ -412,11 +412,11 @@ impl<S: AgentService> Orchestrator<S> {
         let should_interrupt_for_xml = !self.is_tool_supported(agent)?;
 
         while let Some(message) = response.next().await {
-            let message = message?;
+            let message = message.with_context(|| "Failed to process message stream")?;
             messages.push(message.clone());
 
             // Process usage information
-            usage = self.update_usage(&message, context, usage);
+            usage = self.estimate_usage(&message, context, usage);
 
             // Process content
             if let Some(content_part) = message.content.as_ref() {
@@ -537,12 +537,13 @@ impl<S: AgentService> Orchestrator<S> {
     }
 
     async fn chat(
-        &mut self,
+        &self,
         agent: &Agent,
         model_id: &ModelId,
         context: Context,
     ) -> anyhow::Result<ChatCompletionMessageFull> {
-        let response = self.services.chat(model_id, context.clone()).await?;
+        let services = self.services.clone();
+        let response = services.chat(model_id, context.clone()).await?;
         self.collect_messages(agent, &context, response).await
     }
 
@@ -610,8 +611,11 @@ impl<S: AgentService> Orchestrator<S> {
             // Set context for the current loop iteration
             self.conversation.context = Some(context.clone());
 
-            let ChatCompletionMessageFull { tool_calls, content, usage } =
-                self.chat(&agent, &model_id, context.clone()).await?;
+            let ChatCompletionMessageFull { tool_calls, content, usage } = self
+                .environment
+                .retry_config
+                .retry(|| self.chat(&agent, &model_id, context.clone()))
+                .await?;
 
             // Send the usage information if available
 

@@ -46,18 +46,12 @@ mod tests {
 
     #[test]
     fn test_supports_open_router_params() {
-        assert!(supports_open_router_params(&Provider::antinomy(
-            "antinomy".into()
-        )));
+        assert!(supports_open_router_params(&Provider::antinomy("antinomy")));
         assert!(supports_open_router_params(&Provider::open_router(
-            "open-router".into()
+            "open-router"
         )));
 
-        assert!(!supports_open_router_params(&Provider::openai(
-            "openai".into()
-        )));
-        assert!(!supports_open_router_params(&Provider::anthropic(
-            "claude".into()
-        )));
+        assert!(!supports_open_router_params(&Provider::openai("openai")));
+        assert!(!supports_open_router_params(&Provider::anthropic("claude")));
     }
 }
