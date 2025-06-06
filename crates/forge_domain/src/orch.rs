@@ -285,7 +285,8 @@ impl<S: AgentService> Orchestrator<S> {
 
         // Create a new context
         let mut context = Context::default()
-            .add_message(ContextMessage::user(prompt, compact.model.clone().into()));
+            .add_message(ContextMessage::user(prompt, compact.model.clone().into()))
+            .conversation_id(self.conversation.id.clone());
 
         // Set max_tokens for summary
         if let Some(max_token) = compact.max_tokens {
@@ -542,8 +543,7 @@ impl<S: AgentService> Orchestrator<S> {
         model_id: &ModelId,
         context: Context,
     ) -> anyhow::Result<ChatCompletionMessageFull> {
-        let services = self.services.clone();
-        let response = services.chat(model_id, context.clone()).await?;
+        let response = self.services.chat(model_id, context.clone()).await?;
         self.collect_messages(agent, &context, response).await
     }
 
@@ -564,6 +564,9 @@ impl<S: AgentService> Orchestrator<S> {
         let tool_supported = self.is_tool_supported(&agent)?;
 
         let mut context = self.conversation.context.clone().unwrap_or_default();
+
+        // attach the conversation ID to the context
+        context = context.conversation_id(self.conversation.id.clone());
 
         // Reset all the available tools
         context = context.tools(self.get_allowed_tools(&agent)?);

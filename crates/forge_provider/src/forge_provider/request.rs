@@ -187,6 +187,8 @@ pub struct Request {
     pub provider: Option<ProviderPreferences>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 impl Request {
@@ -278,6 +280,7 @@ impl From<Context> for Request {
             route: Default::default(),
             provider: Default::default(),
             parallel_tool_calls: Some(false),
+            session_id: request.conversation_id.map(|id| id.to_string()),
         }
     }
 }
