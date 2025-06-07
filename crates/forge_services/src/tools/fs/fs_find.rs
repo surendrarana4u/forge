@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Context;
+use forge_app::EnvironmentService;
 use forge_display::{GrepFormat, TitleFormat};
 use forge_domain::{
     ExecutableTool, FSSearchInput, NamedTool, ToolCallContext, ToolDescription, ToolName,
@@ -13,7 +14,6 @@ use forge_walker::Walker;
 use regex::Regex;
 
 use crate::metadata::Metadata;
-use crate::services::EnvironmentService;
 use crate::utils::{assert_absolute_path, format_display_path};
 use crate::{Clipper, FsWriteService, Infrastructure};
 

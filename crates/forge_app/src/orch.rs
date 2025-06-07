@@ -6,40 +6,23 @@ use anyhow::Context as AnyhowContext;
 use async_recursion::async_recursion;
 use chrono::Local;
 use derive_setters::Setters;
-use forge_walker::Walker;
+use forge_domain::*;
 use futures::{Stream, StreamExt};
 use handlebars::Handlebars;
 use rust_embed::Embed;
 use serde_json::Value;
 use tracing::{debug, info, warn};
 
-use crate::{find_compact_sequence, *};
-
-/// Minimal trait that defines only the methods Orchestrator needs from services
-#[async_trait::async_trait]
-pub trait AgentService: Send + Sync + Clone + 'static {
-    /// Perform a chat request with the provider
-    async fn chat(
-        &self,
-        model_id: &ModelId,
-        context: Context,
-    ) -> ResultStream<ChatCompletionMessage, anyhow::Error>;
-
-    /// Execute a tool call
-    async fn call(
-        &self,
-        agent: &Agent,
-        context: &mut ToolCallContext,
-        call: ToolCallFull,
-    ) -> ToolResult;
-}
+use crate::compaction::Compactor;
+use crate::services::{ProviderService, Services, ToolService};
+use crate::utils::{remove_tag_with_prefix, try_from_xml};
 
 #[derive(Embed)]
 #[folder = "../../templates/"]
 struct Templates;
 
 /// Pure function to render templates without service dependency
-fn render_template(template: &str, object: &impl serde::Serialize) -> anyhow::Result<String> {
+pub fn render_template(template: &str, object: &impl serde::Serialize) -> anyhow::Result<String> {
     // Create handlebars instance with same configuration as ForgeTemplateService
     let mut hb = Handlebars::new();
     hb.set_strict_mode(true);
@@ -64,6 +47,7 @@ pub struct Orchestrator<S> {
     environment: Environment,
     tool_definitions: Vec<ToolDefinition>,
     models: Vec<Model>,
+    files: Vec<String>,
 }
 
 struct ChatCompletionMessageFull {
@@ -72,7 +56,7 @@ struct ChatCompletionMessageFull {
     pub usage: Usage,
 }
 
-impl<S: AgentService> Orchestrator<S> {
+impl<S: Services> Orchestrator<S> {
     pub fn new(services: Arc<S>, environment: Environment, conversation: Conversation) -> Self {
         Self {
             conversation,
@@ -81,6 +65,7 @@ impl<S: AgentService> Orchestrator<S> {
             sender: Default::default(),
             tool_definitions: Default::default(),
             models: Default::default(),
+            files: Default::default(),
         }
     }
 
@@ -108,6 +93,7 @@ impl<S: AgentService> Orchestrator<S> {
             // Execute the tool
             let tool_result = self
                 .services
+                .tool_service()
                 .call(agent, tool_context, tool_call.clone())
                 .await;
 
@@ -185,157 +171,6 @@ impl<S: AgentService> Orchestrator<S> {
         Ok(tool_supported)
     }
 
-    /// Apply compaction to the context if requested
-    async fn compact_context(
-        &mut self,
-        agent: &Agent,
-        context: Context,
-    ) -> anyhow::Result<Context> {
-        // Return early if agent doesn't have compaction configured
-        if let Some(ref compact) = agent.compact {
-            debug!(agent_id = %agent.id, "Context compaction triggered");
-
-            // Identify and compress the first compressible sequence
-            // Get all compressible sequences, considering the preservation window
-            match find_compact_sequence(&context, compact.retention_window)
-                .into_iter()
-                .next()
-            {
-                Some(sequence) => {
-                    debug!(agent_id = %agent.id, "Compressing sequence");
-                    self.compress_single_sequence(compact, context, sequence)
-                        .await
-                }
-                None => {
-                    debug!(agent_id = %agent.id, "No compressible sequences found");
-                    Ok(context)
-                }
-            }
-        } else {
-            Ok(context)
-        }
-    }
-
-    /// Compress a single identified sequence of assistant messages
-    async fn compress_single_sequence(
-        &mut self,
-        compact: &Compact,
-        mut context: Context,
-        sequence: (usize, usize),
-    ) -> anyhow::Result<Context> {
-        let (start, end) = sequence;
-
-        // Extract the sequence to summarize
-        let sequence_messages = &context.messages[start..=end].to_vec();
-
-        // Generate summary for this sequence
-        let summary = self
-            .generate_summary_for_sequence(compact, sequence_messages)
-            .await?;
-
-        // Log the summary for debugging
-        info!(
-            summary = %summary,
-            sequence_start = sequence.0,
-            sequence_end = sequence.1,
-            sequence_length = sequence_messages.len(),
-            "Created context compaction summary"
-        );
-
-        let summary = render_template(
-            "{{> partial-summary-frame.hbs}}",
-            &serde_json::json!({ "summary": summary }),
-        )?;
-
-        // Replace the sequence with a single summary message using splice
-        // This removes the sequence and inserts the summary message in-place
-        context.messages.splice(
-            start..=end,
-            std::iter::once(ContextMessage::user(summary, None)),
-        );
-
-        Ok(context)
-    }
-
-    /// Generate a summary for a specific sequence of assistant messages
-    async fn generate_summary_for_sequence(
-        &mut self,
-        compact: &Compact,
-        messages: &[ContextMessage],
-    ) -> anyhow::Result<String> {
-        // Create a temporary context with just the sequence for summarization
-        let sequence_context = messages
-            .iter()
-            .fold(Context::default(), |ctx, msg| ctx.add_message(msg.clone()));
-
-        // Render the summarization prompt
-        let summary_tag = compact.summary_tag.as_ref().cloned().unwrap_or_default();
-        let ctx = serde_json::json!({
-            "context": sequence_context.to_text(),
-            "summary_tag": summary_tag
-        });
-
-        let prompt = render_template(
-            compact
-                .prompt
-                .as_deref()
-                .unwrap_or("{{> system-prompt-context-summarizer.hbs}}"),
-            &ctx,
-        )?;
-
-        // Create a new context
-        let mut context = Context::default()
-            .add_message(ContextMessage::user(prompt, compact.model.clone().into()))
-            .conversation_id(self.conversation.id.clone());
-
-        // Set max_tokens for summary
-        if let Some(max_token) = compact.max_tokens {
-            context = context.max_tokens(max_token);
-        }
-
-        // Get summary from the provider
-        let response = self.services.chat(&compact.model, context).await?;
-
-        self.collect_completion_stream_content(compact, response)
-            .await
-    }
-
-    /// Collects the content from a streaming ChatCompletionMessage response
-    /// and extracts text within the configured tag if present
-    async fn collect_completion_stream_content(
-        &mut self,
-        compact: &Compact,
-        mut stream: impl Stream<Item = anyhow::Result<ChatCompletionMessage>> + std::marker::Unpin,
-    ) -> anyhow::Result<String> {
-        let mut result_content = String::new();
-
-        while let Some(message_result) = stream.next().await {
-            let message = message_result?;
-            if let Some(content) = message.content {
-                result_content.push_str(content.as_str());
-            }
-        }
-
-        // Extract content from within configured tags if present and if tag is
-        // configured
-        // TODO: If no tag is found, it could be a misformed LLM call. We should
-        // consider retrying.
-        if let Some(extracted) = extract_tag_content(
-            &result_content,
-            compact
-                .summary_tag
-                .as_ref()
-                .cloned()
-                .unwrap_or_default()
-                .as_str(),
-        ) {
-            return Ok(extracted.to_string());
-        }
-
-        // If no tag extraction performed, return the original content
-        Ok(result_content)
-    }
-
     async fn set_system_prompt(
         &mut self,
         context: Context,
@@ -344,14 +179,7 @@ impl<S: AgentService> Orchestrator<S> {
     ) -> anyhow::Result<Context> {
         Ok(if let Some(system_prompt) = &agent.system_prompt {
             let env = self.environment.clone();
-            let walker = Walker::max_all().max_depth(agent.max_walker_depth.unwrap_or(1));
-            let mut files = walker
-                .cwd(env.cwd.clone())
-                .get()
-                .await?
-                .into_iter()
-                .map(|f| f.path)
-                .collect::<Vec<_>>();
+            let mut files = self.files.clone();
             files.sort();
 
             let current_time = Local::now().format("%Y-%m-%d %H:%M:%S %:z").to_string();
@@ -380,28 +208,10 @@ impl<S: AgentService> Orchestrator<S> {
         })
     }
 
-    /// Process usage information from a chat completion message
-    fn estimate_usage(
-        &self,
-        message: &ChatCompletionMessage,
-        context: &Context,
-        request_usage: Usage,
-    ) -> Usage {
-        // If usage information is provided by provider use that else depend on
-        // estimates.
-
-        let mut usage = message.usage.clone().unwrap_or(request_usage);
-        let content_length = context.to_text().len();
-        usage.estimated_tokens = estimate_token_count(content_length) as u64;
-        usage.content_length = content_length as u64;
-        usage
-    }
-
     async fn collect_messages(
         &self,
-        agent: &Agent,
-        context: &Context,
         mut response: impl Stream<Item = anyhow::Result<ChatCompletionMessage>> + std::marker::Unpin,
+        should_interrupt_for_xml: bool,
     ) -> anyhow::Result<ChatCompletionMessageFull> {
         let mut messages = Vec::new();
         let mut usage: Usage = Default::default();
@@ -409,15 +219,12 @@ impl<S: AgentService> Orchestrator<S> {
         let mut xml_tool_calls = None;
         let mut tool_interrupted = false;
 
-        // Only interrupt the loop for XML tool calls if tool_supported is false
-        let should_interrupt_for_xml = !self.is_tool_supported(agent)?;
-
         while let Some(message) = response.next().await {
             let message = message.with_context(|| "Failed to process message stream")?;
             messages.push(message.clone());
 
             // Process usage information
-            usage = self.estimate_usage(&message, context, usage);
+            usage = message.usage.unwrap_or_default();
 
             // Process content
             if let Some(content_part) = message.content.as_ref() {
@@ -434,21 +241,17 @@ impl<S: AgentService> Orchestrator<S> {
                 })
                 .await?;
 
-                // Check for XML tool calls in the content, but only interrupt if tool_supported
-                // is false
+                // Check for XML tool calls in the content, but only interrupt if flag is set
                 if should_interrupt_for_xml {
                     // Use match instead of ? to avoid propagating errors
-                    if let Some(tool_call) = ToolCallFull::try_from_xml(&content)
-                        .ok()
-                        .into_iter()
-                        .flatten()
-                        .next()
+                    if let Some(tool_call) =
+                        try_from_xml(&content).ok().into_iter().flatten().next()
                     {
                         xml_tool_calls = Some(tool_call);
                         tool_interrupted = true;
 
-                        // Break the loop since we found an XML tool call and tool_supported is
-                        // false
+                        // Break the loop since we found an XML tool call and interruption is
+                        // enabled
                         break;
                     }
                 }
@@ -463,6 +266,7 @@ impl<S: AgentService> Orchestrator<S> {
             .collect::<Vec<_>>()
             .join("");
 
+        #[allow(clippy::collapsible_if)]
         if tool_interrupted && !content.trim().ends_with("</forge_tool_call>") {
             if let Some((i, right)) = content.rmatch_indices("</forge_tool_call>").next() {
                 content.truncate(i + right.len());
@@ -472,7 +276,7 @@ impl<S: AgentService> Orchestrator<S> {
                 content.push_str("<forge_feedback>");
                 content.push_str(
                     "Response interrupted by tool result. Use only one tool at the end of the message",
-                 );
+                );
                 content.push_str("</forge_feedback>");
             }
         }
@@ -518,7 +322,7 @@ impl<S: AgentService> Orchestrator<S> {
         Ok(ChatCompletionMessageFull { content, tool_calls, usage })
     }
 
-    pub async fn dispatch(&mut self, event: Event) -> anyhow::Result<()> {
+    pub async fn chat(&mut self, event: Event) -> anyhow::Result<()> {
         let target_agents = {
             debug!(
                 conversation_id = %self.conversation.id.clone(),
@@ -537,14 +341,20 @@ impl<S: AgentService> Orchestrator<S> {
         Ok(())
     }
 
-    async fn chat(
+    async fn execute_chat_turn(
         &self,
         agent: &Agent,
         model_id: &ModelId,
         context: Context,
     ) -> anyhow::Result<ChatCompletionMessageFull> {
-        let response = self.services.chat(model_id, context.clone()).await?;
-        self.collect_messages(agent, &context, response).await
+        let services = self.services.clone();
+        let response = services.provider_service().chat(model_id, context).await?;
+
+        // Only interrupt for XML tool calls if tool_supported is false
+        let should_interrupt_for_xml = !self.is_tool_supported(agent)?;
+
+        self.collect_messages(response, should_interrupt_for_xml)
+            .await
     }
 
     // Create a helper method with the core functionality
@@ -614,11 +424,14 @@ impl<S: AgentService> Orchestrator<S> {
             // Set context for the current loop iteration
             self.conversation.context = Some(context.clone());
 
-            let ChatCompletionMessageFull { tool_calls, content, usage } = self
+            let ChatCompletionMessageFull { tool_calls, content, mut usage } = self
                 .environment
                 .retry_config
-                .retry(|| self.chat(&agent, &model_id, context.clone()))
+                .retry(|| self.execute_chat_turn(&agent, &model_id, context.clone()))
                 .await?;
+
+            // Set estimated tokens
+            usage.estimated_tokens = estimate_token_count(context.to_text().len()) as u64;
 
             // Send the usage information if available
 
@@ -633,7 +446,8 @@ impl<S: AgentService> Orchestrator<S> {
             // Check if context requires compression and decide to compact
             if agent.should_compact(&context, max(usage.prompt_tokens, usage.estimated_tokens)) {
                 info!(agent_id = %agent.id, "Compaction needed, applying compaction");
-                context = self.compact_context(&agent, context).await?;
+                let compactor = Compactor::new(self.services.clone());
+                context = compactor.compact_context(&agent, context).await?;
             } else {
                 debug!(agent_id = %agent.id, "Compaction not needed");
             }

@@ -4,13 +4,13 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{bail, Context};
+use forge_app::EnvironmentService;
 use forge_display::TitleFormat;
 use forge_domain::{
     ExecutableTool, FSReadInput, NamedTool, ToolCallContext, ToolDescription, ToolName, ToolOutput,
 };
 use forge_tool_macros::ToolDescription;
 
-use crate::services::EnvironmentService;
 use crate::utils::{assert_absolute_path, format_display_path};
 use crate::{FsReadService, Infrastructure};
 

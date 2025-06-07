@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
+use forge_app::EnvironmentService;
 use forge_domain::{Environment, Provider, RetryConfig};
-use forge_services::EnvironmentService;
 
 pub struct ForgeEnvironmentService {
     restricted: bool,

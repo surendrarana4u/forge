@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use forge_app::EnvironmentService;
 use forge_display::TitleFormat;
 use forge_domain::{
     ExecutableTool, FSRemoveInput, NamedTool, ToolCallContext, ToolDescription, ToolName,
@@ -8,7 +9,6 @@ use forge_domain::{
 };
 use forge_tool_macros::ToolDescription;
 
-use crate::services::EnvironmentService;
 use crate::utils::{assert_absolute_path, format_display_path};
 use crate::{FileRemoveService, FsMetaService, Infrastructure};
 

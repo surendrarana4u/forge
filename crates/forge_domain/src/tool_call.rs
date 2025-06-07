@@ -3,7 +3,7 @@ use derive_setters::Setters;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{extract_tag_content, Error, Result, ToolName};
+use crate::{Error, Result, ToolName};
 
 /// Unique identifier for a using a tool
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -122,16 +122,6 @@ impl ToolCallFull {
 
         Ok(tool_calls)
     }
-
-    /// Parse multiple tool calls from XML format.
-    pub fn try_from_xml(input: &str) -> std::result::Result<Vec<Self>, Error> {
-        match extract_tag_content(input, "forge_tool_call") {
-            None => Ok(Default::default()),
-            Some(content) => Ok(vec![
-                serde_json::from_str(content).map_err(Error::ToolCallArgument)?
-            ]),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -209,15 +199,6 @@ mod tests {
         let expected = vec![];
 
         assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_real_example() {
-        let message = include_str!("./fixtures/tool_call_01.md");
-        let tool_call = ToolCallFull::try_from_xml(message).unwrap();
-        let actual = tool_call.first().unwrap().name.to_string();
-        let expected = "forge_tool_attempt_completion";
-        assert_eq!(actual, expected)
     }
 
     #[test]

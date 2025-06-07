@@ -44,6 +44,7 @@ pub mod tests {
     use std::path::{Path, PathBuf};
 
     use bytes::Bytes;
+    use forge_app::EnvironmentService;
     use forge_domain::{
         CommandOutput, Environment, Provider, ToolDefinition, ToolName, ToolOutput,
     };
@@ -51,7 +52,6 @@ pub mod tests {
     use serde_json::Value;
 
     use super::*;
-    use crate::services::EnvironmentService;
     use crate::{
         CommandExecutorService, FileRemoveService, FsCreateDirsService, FsMetaService,
         FsReadService, FsSnapshotService, FsWriteService, InquireService, McpClient, McpServer,

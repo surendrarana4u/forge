@@ -17,6 +17,10 @@ pub struct RetryConfig {
     #[merge(strategy = crate::merge::std::overwrite)]
     pub initial_backoff_ms: u64,
 
+    /// Minimum delay in milliseconds between retry attempts
+    #[merge(strategy = crate::merge::std::overwrite)]
+    pub min_delay_ms: u64,
+
     /// Backoff multiplication factor for each retry attempt
     #[merge(strategy = crate::merge::std::overwrite)]
     pub backoff_factor: u64,
@@ -35,6 +39,7 @@ impl Default for RetryConfig {
     fn default() -> Self {
         Self {
             initial_backoff_ms: 200,
+            min_delay_ms: 1000,
             backoff_factor: 2,
             max_retry_attempts: 8,
             retry_status_codes: vec![429, 500, 502, 503, 504],
@@ -43,6 +48,7 @@ impl Default for RetryConfig {
 }
 
 impl RetryConfig {
+    //TODO: retry can't be in domain
     /// Retry wrapper for operations that may fail with retryable errors
     pub async fn retry<T, FutureFn, Fut>(&self, operation: FutureFn) -> anyhow::Result<T>
     where
@@ -50,7 +56,7 @@ impl RetryConfig {
         Fut: Future<Output = anyhow::Result<T>>,
     {
         let strategy = ExponentialBuilder::default()
-            .with_min_delay(Duration::from_millis(0))
+            .with_min_delay(Duration::from_millis(self.min_delay_ms))
             .with_factor(self.backoff_factor as f32)
             .with_max_times(self.max_retry_attempts)
             .with_jitter();
@@ -87,7 +93,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_success_on_first_attempt() {
         // Fixture: Create retry config and successful operation
-        let retry_config = RetryConfig::default();
+        let retry_config = RetryConfig::default().min_delay_ms(0u64);
         let call_count = Arc::new(Mutex::new(0));
         let call_count_clone = call_count.clone();
 
@@ -115,6 +121,7 @@ mod tests {
         let retry_config = RetryConfig::default()
             .max_retry_attempts(total_count)
             .initial_backoff_ms(0u64)
+            .min_delay_ms(0u64)
             .backoff_factor(1u64);
         let call_count = Arc::new(Mutex::new(0));
         let call_count_clone = call_count.clone();
