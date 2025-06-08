@@ -4,7 +4,7 @@ use derive_more::derive::Display;
 use derive_setters::Setters;
 use forge_domain::{
     Context, ContextMessage, ModelId, ToolCallFull, ToolCallId, ToolDefinition, ToolName,
-    ToolOutputValue, ToolResult,
+    ToolResult, ToolValue,
 };
 use serde::{Deserialize, Serialize};
 
@@ -343,16 +343,16 @@ impl From<ToolResult> for MessageContent {
         let mut parts = Vec::new();
         for value in result.output.values.into_iter() {
             match value {
-                ToolOutputValue::Text(text) => {
+                ToolValue::Text(text) => {
                     parts.push(ContentPart::Text { text, cache_control: None });
                 }
-                ToolOutputValue::Image(img) => {
+                ToolValue::Image(img) => {
                     let content = ContentPart::ImageUrl {
                         image_url: ImageUrl { url: img.url().clone(), detail: None },
                     };
                     parts.push(content);
                 }
-                ToolOutputValue::Empty => {
+                ToolValue::Empty => {
                     // Handle empty case if needed
                 }
             }

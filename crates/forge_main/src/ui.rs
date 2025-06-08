@@ -93,6 +93,9 @@ impl<F: API> UI<F> {
         // Override the mode that was reset by the conversation
         self.state.mode = mode.clone();
 
+        // Reset is_first to true when switching modes
+        self.state.is_first = true;
+
         // Retrieve the conversation, update it, and save it back
         if let Some(mut conversation) = self.api.conversation(&conversation_id).await? {
             conversation.set_variable("mode".to_string(), Value::from(mode.to_string()));

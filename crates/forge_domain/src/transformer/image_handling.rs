@@ -37,16 +37,16 @@ impl Transformer for ImageHandling {
             })
             .flat_map(|tool_result| tool_result.output.values.iter_mut())
             .for_each(|output_value| match output_value {
-                crate::ToolOutputValue::Image(image) => {
+                crate::ToolValue::Image(image) => {
                     let image = std::mem::take(image);
                     let id = images.len();
-                    *output_value = crate::ToolOutputValue::Text(format!(
+                    *output_value = crate::ToolValue::Text(format!(
                         "[The image with ID {id} will be sent as an attachment in the next message]"
                     ));
                     images.push((id, image));
                 }
-                crate::ToolOutputValue::Text(_) => {}
-                crate::ToolOutputValue::Empty => {}
+                crate::ToolValue::Text(_) => {}
+                crate::ToolValue::Empty => {}
             });
 
         // Step 2: Insert all images at the end
@@ -69,7 +69,7 @@ mod tests {
     use serde::Serialize;
 
     use super::*;
-    use crate::{Image, ToolCallId, ToolName, ToolOutput, ToolOutputValue, ToolResult};
+    use crate::{Image, ToolCallId, ToolName, ToolOutput, ToolResult, ToolValue};
 
     #[derive(Serialize)]
     struct TransformationSnapshot {
@@ -92,10 +92,10 @@ mod tests {
             call_id: Some(ToolCallId::new("call_456")),
             output: ToolOutput {
                 values: vec![
-                    ToolOutputValue::Text("First text output".to_string()),
-                    ToolOutputValue::Image(image),
-                    ToolOutputValue::Text("Second text output".to_string()),
-                    ToolOutputValue::Empty,
+                    ToolValue::Text("First text output".to_string()),
+                    ToolValue::Image(image),
+                    ToolValue::Text("Second text output".to_string()),
+                    ToolValue::Empty,
                 ],
                 is_error: false,
             },
@@ -169,11 +169,11 @@ mod tests {
             call_id: Some(ToolCallId::new("call_multi")),
             output: ToolOutput {
                 values: vec![
-                    ToolOutputValue::Text("Before images".to_string()),
-                    ToolOutputValue::Image(image1),
-                    ToolOutputValue::Text("Between images".to_string()),
-                    ToolOutputValue::Image(image2),
-                    ToolOutputValue::Text("After images".to_string()),
+                    ToolValue::Text("Before images".to_string()),
+                    ToolValue::Image(image1),
+                    ToolValue::Text("Between images".to_string()),
+                    ToolValue::Image(image2),
+                    ToolValue::Text("After images".to_string()),
                 ],
                 is_error: false,
             },
@@ -195,8 +195,8 @@ mod tests {
             call_id: Some(ToolCallId::new("call_error")),
             output: ToolOutput {
                 values: vec![
-                    ToolOutputValue::Text("Error occurred".to_string()),
-                    ToolOutputValue::Image(image),
+                    ToolValue::Text("Error occurred".to_string()),
+                    ToolValue::Image(image),
                 ],
                 is_error: true,
             },

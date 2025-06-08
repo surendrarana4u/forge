@@ -1,11 +1,20 @@
 ---
 source: crates/forge_services/src/tools/shell.rs
-expression: "TempDir::normalize(&small_result)"
+expression: actual
 ---
 ---
-command: echo
+command: mixed newlines
 exit_code: 0
 ---
 <stdout>
-ABCDEFGHIJKLMNOPQRSTUVWXYZ
+line1
+
+line3
+
+
+line6
 </stdout>
+<stderr>
+error1
+error2
+</stderr>

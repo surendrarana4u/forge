@@ -44,13 +44,13 @@ impl Transformer for TransformToolCalls {
                     // Convert tool results to user messages
                     for output_value in tool_result.output.values {
                         match output_value {
-                            crate::ToolOutputValue::Text(text) => {
+                            crate::ToolValue::Text(text) => {
                                 new_messages.push(ContextMessage::user(text, self.model.clone()));
                             }
-                            crate::ToolOutputValue::Image(image) => {
+                            crate::ToolValue::Image(image) => {
                                 new_messages.push(ContextMessage::Image(image));
                             }
-                            crate::ToolOutputValue::Empty => {}
+                            crate::ToolValue::Empty => {}
                         }
                     }
                 }
@@ -73,9 +73,7 @@ mod tests {
     use serde::Serialize;
 
     use super::*;
-    use crate::{
-        Image, ToolCallFull, ToolCallId, ToolName, ToolOutput, ToolOutputValue, ToolResult,
-    };
+    use crate::{Image, ToolCallFull, ToolCallId, ToolName, ToolOutput, ToolResult, ToolValue};
 
     #[derive(Serialize)]
     struct TransformationSnapshot {
@@ -118,10 +116,10 @@ mod tests {
             call_id: Some(ToolCallId::new("call_456")),
             output: ToolOutput {
                 values: vec![
-                    ToolOutputValue::Text("First text output".to_string()),
-                    ToolOutputValue::Image(image),
-                    ToolOutputValue::Text("Second text output".to_string()),
-                    ToolOutputValue::Empty,
+                    ToolValue::Text("First text output".to_string()),
+                    ToolValue::Image(image),
+                    ToolValue::Text("Second text output".to_string()),
+                    ToolValue::Empty,
                 ],
                 is_error: false,
             },
@@ -188,7 +186,7 @@ mod tests {
         let fixture = Context::default().add_tool_results(vec![ToolResult {
             name: ToolName::new("empty_tool"),
             call_id: Some(ToolCallId::new("call_empty")),
-            output: ToolOutput { values: vec![ToolOutputValue::Empty], is_error: false },
+            output: ToolOutput { values: vec![ToolValue::Empty], is_error: false },
         }]);
 
         let mut transformer = TransformToolCalls::new();

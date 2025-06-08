@@ -3,10 +3,9 @@ source: crates/forge_services/src/tools/shell.rs
 expression: "&result.into_string()"
 ---
 ---
-command: echo 'first' && echo 'second'
+command: echo -e 'line1\nline2\nline3'
 exit_code: 0
 ---
 <stdout>
-first
-second
+-e 'line1\nline2\nline3
 </stdout>

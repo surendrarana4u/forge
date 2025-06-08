@@ -340,7 +340,7 @@ mod tests {
                     name: crate::ToolName::new("empty_tool"),
                     call_id: Some(crate::ToolCallId::new("call2")),
                     output: crate::ToolOutput {
-                        values: vec![crate::ToolOutputValue::Empty],
+                        values: vec![crate::ToolValue::Empty],
                         is_error: false,
                     },
                 },
@@ -378,10 +378,10 @@ mod tests {
             call_id: Some(crate::ToolCallId::new("call1")),
             output: crate::ToolOutput {
                 values: vec![
-                    crate::ToolOutputValue::Text("First text".to_string()),
-                    crate::ToolOutputValue::Image(image1),
-                    crate::ToolOutputValue::Text("Second text".to_string()),
-                    crate::ToolOutputValue::Image(image2),
+                    crate::ToolValue::Text("First text".to_string()),
+                    crate::ToolValue::Image(image1),
+                    crate::ToolValue::Text("Second text".to_string()),
+                    crate::ToolValue::Image(image2),
                 ],
                 is_error: false,
             },
@@ -435,10 +435,10 @@ mod tests {
                 call_id: Some(crate::ToolCallId::new("call1")),
                 output: crate::ToolOutput {
                     values: vec![
-                        crate::ToolOutputValue::Text("Before image".to_string()),
-                        crate::ToolOutputValue::Image(image),
-                        crate::ToolOutputValue::Text("After image".to_string()),
-                        crate::ToolOutputValue::Empty,
+                        crate::ToolValue::Text("Before image".to_string()),
+                        crate::ToolValue::Image(image),
+                        crate::ToolValue::Text("After image".to_string()),
+                        crate::ToolValue::Empty,
                     ],
                     is_error: false,
                 },
@@ -457,7 +457,7 @@ mod tests {
             name: crate::ToolName::new("error_tool"),
             call_id: Some(crate::ToolCallId::new("call1")),
             output: crate::ToolOutput {
-                values: vec![crate::ToolOutputValue::Image(image)],
+                values: vec![crate::ToolValue::Image(image)],
                 is_error: true,
             },
         }]);

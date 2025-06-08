@@ -1,14 +1,17 @@
 ---
 source: crates/forge_services/src/tools/shell.rs
-expression: "&result.into_string()"
+expression: actual
 ---
 ---
-command: echo 'to stdout' && echo 'to stderr' >&2
+command: complex command
 exit_code: 0
 ---
 <stdout>
-to stdout
+stdout line 1
+stdout line 2
+stdout line 3
 </stdout>
 <stderr>
-to stderr
+stderr line 1
+stderr line 2
 </stderr>
