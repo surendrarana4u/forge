@@ -2,39 +2,64 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use forge_domain::{
-    Agent, Attachment, ChatCompletionMessage, Context, Conversation, ConversationId, Environment,
-    File, Image, McpConfig, Model, ModelId, PatchOperation, ResultStream, Scope, Tool,
+    Agent, Attachment, ChatCompletionMessage, CommandOutput, Context, Conversation, ConversationId,
+    Environment, File, McpConfig, Model, ModelId, PatchOperation, ResultStream, Scope, Tool,
     ToolCallContext, ToolCallFull, ToolDefinition, ToolName, ToolResult, Workflow,
 };
 
 pub struct ShellOutput {
-    pub stdout: String,
-    pub stderr: String,
+    pub output: CommandOutput,
+    pub shell: String,
 }
 
 pub struct PatchOutput {
+    pub warning: Option<String>,
     pub before: String,
     pub after: String,
 }
 
 pub struct ReadOutput {
     pub content: Content,
+    pub start_line: u64,
+    pub end_line: u64,
+    pub total_lines: u64,
 }
 
 pub enum Content {
     File(String),
-    Image(Image),
 }
 
 pub struct SearchResult {
-    pub line: String,
     pub matches: Vec<String>,
-    pub path: Option<PathBuf>,
 }
 
 pub struct FetchOutput {
     pub content: String,
     pub code: u16,
+    pub context: String,
+}
+
+pub struct FsCreateOutput {
+    pub path: String,
+    // Set when the file already exists
+    pub previous: Option<String>,
+    pub warning: Option<String>,
+}
+
+pub struct FsRemoveOutput {
+    pub completed: bool,
+}
+
+#[derive(derive_more::From)]
+pub struct FsUndoOutput(String);
+
+impl FsUndoOutput {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+    pub fn into_inner(self) -> String {
+        self.0
+    }
 }
 
 #[async_trait::async_trait]
@@ -143,12 +168,6 @@ pub trait FileDiscoveryService: Send + Sync {
 }
 
 #[async_trait::async_trait]
-pub trait AttemptCompletionService: Send + Sync {
-    /// Attempts to complete a tool call with the given context.
-    async fn attempt_completion(&self, result: String) -> anyhow::Result<String>;
-}
-
-#[async_trait::async_trait]
 pub trait FsCreateService: Send + Sync {
     /// Create a file at the specified path with the given content.
     async fn create(
@@ -156,7 +175,8 @@ pub trait FsCreateService: Send + Sync {
         path: String,
         content: String,
         overwrite: bool,
-    ) -> anyhow::Result<String>;
+        capture_snapshot: bool,
+    ) -> anyhow::Result<FsCreateOutput>;
 }
 
 #[async_trait::async_trait]
@@ -174,13 +194,18 @@ pub trait FsPatchService: Send + Sync {
 #[async_trait::async_trait]
 pub trait FsReadService: Send + Sync {
     /// Reads a file at the specified path and returns its content.
-    async fn read(&self, path: String) -> anyhow::Result<ReadOutput>;
+    async fn read(
+        &self,
+        path: String,
+        start_line: Option<u64>,
+        end_line: Option<u64>,
+    ) -> anyhow::Result<ReadOutput>;
 }
 
 #[async_trait::async_trait]
 pub trait FsRemoveService: Send + Sync {
     /// Removes a file at the specified path.
-    async fn remove(&self, path: String, explanation: Option<String>) -> anyhow::Result<()>;
+    async fn remove(&self, path: String) -> anyhow::Result<FsRemoveOutput>;
 }
 
 #[async_trait::async_trait]
@@ -191,7 +216,7 @@ pub trait FsSearchService: Send + Sync {
         path: String,
         regex: Option<String>,
         file_pattern: Option<String>,
-    ) -> anyhow::Result<Vec<SearchResult>>;
+    ) -> anyhow::Result<Option<SearchResult>>;
 }
 
 #[async_trait::async_trait]
@@ -200,16 +225,18 @@ pub trait FollowUpService: Send + Sync {
     async fn follow_up(
         &self,
         question: String,
-        multiple: Option<bool>,
         options: Vec<String>,
-    ) -> anyhow::Result<String>;
+        multiple: Option<bool>,
+    ) -> anyhow::Result<Option<String>>;
 }
 
 #[async_trait::async_trait]
 pub trait FsUndoService: Send + Sync {
     /// Undoes the last file operation at the specified path.
     /// And returns the content of the undone file.
-    async fn undo(&self, path: String, explanation: Option<String>) -> anyhow::Result<String>;
+    // TODO: We should move Snapshot service to Services from infra
+    // and drop FsUndoService.
+    async fn undo(&self, path: String) -> anyhow::Result<FsUndoOutput>;
 }
 
 #[async_trait::async_trait]
@@ -221,7 +248,7 @@ pub trait NetFetchService: Send + Sync {
 #[async_trait::async_trait]
 pub trait ShellService: Send + Sync {
     /// Executes a shell command and returns the output.
-    async fn shell(
+    async fn execute(
         &self,
         command: String,
         cwd: PathBuf,
@@ -242,6 +269,15 @@ pub trait Services: Send + Sync + 'static + Clone {
     type WorkflowService: WorkflowService;
     type FileDiscoveryService: FileDiscoveryService;
     type McpConfigManager: McpConfigManager;
+    type FsCreateService: FsCreateService;
+    type FsPatchService: FsPatchService;
+    type FsReadService: FsReadService;
+    type FsRemoveService: FsRemoveService;
+    type FsSearchService: FsSearchService;
+    type FollowUpService: FollowUpService;
+    type FsUndoService: FsUndoService;
+    type NetFetchService: NetFetchService;
+    type ShellService: ShellService;
 
     fn tool_service(&self) -> &Self::ToolService;
     fn provider_service(&self) -> &Self::ProviderService;
@@ -252,4 +288,13 @@ pub trait Services: Send + Sync + 'static + Clone {
     fn workflow_service(&self) -> &Self::WorkflowService;
     fn file_discovery_service(&self) -> &Self::FileDiscoveryService;
     fn mcp_config_manager(&self) -> &Self::McpConfigManager;
+    fn fs_create_service(&self) -> &Self::FsCreateService;
+    fn fs_patch_service(&self) -> &Self::FsPatchService;
+    fn fs_read_service(&self) -> &Self::FsReadService;
+    fn fs_remove_service(&self) -> &Self::FsRemoveService;
+    fn fs_search_service(&self) -> &Self::FsSearchService;
+    fn follow_up_service(&self) -> &Self::FollowUpService;
+    fn fs_undo_service(&self) -> &Self::FsUndoService;
+    fn net_fetch_service(&self) -> &Self::NetFetchService;
+    fn shell_service(&self) -> &Self::ShellService;
 }
