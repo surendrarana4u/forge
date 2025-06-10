@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use forge_display::DiffFormat;
-use forge_domain::{Environment, ToolInput, ToolName, ToolResult};
+use forge_domain::{Environment, ToolName, ToolResult, Tools};
 
 use crate::front_matter::FrontMatter;
 use crate::truncation::FETCH_MAX_LENGTH;
@@ -29,23 +29,23 @@ impl ToolOutput {
     pub fn to_tool_result(
         &self,
         tool_name: ToolName,
-        input: Option<ToolInput>,
-        tancuation_path: Option<PathBuf>,
+        input: Option<Tools>,
+        truncation_path: Option<PathBuf>,
         env: &Environment,
     ) -> ToolResult {
-        ToolResult::new(tool_name).output(self.to_tool_result_inner(input, tancuation_path, env))
+        ToolResult::new(tool_name).output(self.to_tool_result_inner(input, truncation_path, env))
     }
     fn to_tool_result_inner(
         &self,
-        input: Option<ToolInput>,
-        tancuation_path: Option<PathBuf>,
+        input: Option<Tools>,
+        truncation_path: Option<PathBuf>,
         env: &Environment,
     ) -> anyhow::Result<forge_domain::ToolOutput> {
         match self {
             ToolOutput::FsRead(out) => {
-                if let Some(ToolInput::FSRead(input)) = input {
+                if let Some(Tools::FSRead(input)) = input {
                     let is_explicit_range = input.start_line.is_some() | input.end_line.is_some();
-                    let is_range_relevant = is_explicit_range || tancuation_path.is_some();
+                    let is_range_relevant = is_explicit_range || truncation_path.is_some();
 
                     let mut metadata = FrontMatter::default().add("path", input.path);
 
@@ -66,7 +66,7 @@ impl ToolOutput {
                 }
             }
             ToolOutput::FsCreate(out) => {
-                if let Some(ToolInput::FSWrite(input)) = input {
+                if let Some(Tools::FSWrite(input)) = input {
                     let chars = input.content.len();
                     let operation = if out.previous.is_some() {
                         "OVERWRITE"
@@ -86,7 +86,7 @@ impl ToolOutput {
                 }
             }
             ToolOutput::FsRemove(out) => {
-                if let Some(ToolInput::FSRemove(input)) = input {
+                if let Some(Tools::FSRemove(input)) = input {
                     let display_path = display_path(env, Path::new(&input.path))?;
                     if out.completed {
                         Ok(forge_domain::ToolOutput::text(format!(
@@ -102,7 +102,7 @@ impl ToolOutput {
                 }
             }
             ToolOutput::FsSearch(output) => {
-                if let Some(ToolInput::FSSearch(input)) = input {
+                if let Some(Tools::FSSearch(input)) = input {
                     match output {
                         Some(out) => {
                             let truncated_output = truncate_search_output(
@@ -129,7 +129,7 @@ impl ToolOutput {
                             result.push_str(&truncated_output.output);
 
                             // Create temp file if needed
-                            if let Some(path) = tancuation_path {
+                            if let Some(path) = truncation_path {
                                 result.push_str(&format!(
                                     "\n<truncation>content is truncated to {} lines, remaining content can be read from path:{}</truncation>",
                                     truncated_output.max_lines,
@@ -148,7 +148,7 @@ impl ToolOutput {
                 }
             }
             ToolOutput::FsPatch(output) => {
-                if let Some(ToolInput::FSPatch(input)) = input {
+                if let Some(Tools::FSPatch(input)) = input {
                     let diff = console::strip_ansi_codes(&DiffFormat::format(
                         &output.before,
                         &output.after,
@@ -170,14 +170,14 @@ impl ToolOutput {
                 output.as_str()
             ))),
             ToolOutput::NetFetch(output) => {
-                if let Some(ToolInput::NetFetch(input)) = input {
+                if let Some(Tools::NetFetch(input)) = input {
                     let mut metadata = FrontMatter::default()
                         .add("URL", &input.url)
                         .add("total_chars", output.content.len())
                         .add("start_char", 0)
                         .add("end_char", FETCH_MAX_LENGTH.min(output.content.len()))
                         .add("context", &output.context);
-                    if let Some(path) = tancuation_path.as_ref() {
+                    if let Some(path) = truncation_path.as_ref() {
                         metadata = metadata.add(
                             "truncation",
                             format!(
@@ -187,7 +187,7 @@ impl ToolOutput {
                             ),
                         );
                     }
-                    let truncation_tag = match tancuation_path.as_ref() {
+                    let truncation_tag = match truncation_path.as_ref() {
                         Some(path) => {
                             format!(
                                 "\n<truncation>content is truncated to {} chars, remaining content can be read from path: {}</truncation>",
@@ -250,7 +250,7 @@ impl ToolOutput {
                 result = format!("{metadata}{result}");
 
                 // Create temp file if needed
-                if let Some(path) = tancuation_path.as_ref() {
+                if let Some(path) = truncation_path.as_ref() {
                     result.push_str(&format!(
                         "\n<truncated>content is truncated, remaining content can be read from path:{}</truncated>",
                         path.display()
