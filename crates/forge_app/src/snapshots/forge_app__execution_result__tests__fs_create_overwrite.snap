@@ -1,0 +1,9 @@
+---
+source: crates/forge_app/src/execution_result.rs
+expression: to_value(actual)
+---
+---
+path: /home/user/existing_file.txt
+operation: OVERWRITE
+total_chars: 24
+---

@@ -1,0 +1,10 @@
+---
+source: crates/forge_app/src/execution_result.rs
+expression: to_value(actual)
+---
+---
+path: /home/user/file_with_warning.txt
+operation: CREATE
+total_chars: 20
+Warning: File created in non-standard location
+---

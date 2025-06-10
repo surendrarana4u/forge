@@ -1,0 +1,11 @@
+---
+source: crates/forge_app/src/execution_result.rs
+expression: to_value(actual)
+---
+---
+path: /home/user/test.txt
+total_chars: 29
+---
+1        |-Hello world
+    1    |+Hello universe
+2   2    | This is a test
