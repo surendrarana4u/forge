@@ -1,21 +1,27 @@
 use std::cmp::min;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
+use anyhow::Context;
 use forge_display::{DiffFormat, GrepFormat, TitleFormat};
 use forge_domain::{
     AttemptCompletion, FSSearch, Tool, ToolCallContext, ToolCallFull, ToolDefinition, ToolName,
-    ToolResult, Tools,
+    ToolOutput, ToolResult, Tools,
 };
 use regex::Regex;
 use strum::IntoEnumIterator;
+use tokio::time::timeout;
 
 use crate::utils::display_path;
 use crate::{
-    Content, EnvironmentService, FetchOutput, FollowUpService, FsCreateOutput, FsCreateService,
-    FsPatchService, FsReadService, FsRemoveService, FsSearchService, FsUndoOutput, FsUndoService,
-    NetFetchService, PatchOutput, ReadOutput, SearchResult, Services, ShellOutput, ShellService,
+    Content, EnvironmentService, Error, FetchOutput, FollowUpService, FsCreateOutput,
+    FsCreateService, FsPatchService, FsReadService, FsRemoveService, FsSearchService, FsUndoOutput,
+    FsUndoService, McpService, NetFetchService, PatchOutput, ReadOutput, SearchResult, Services,
+    ShellOutput, ShellService,
 };
+
+const TOOL_CALL_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub struct ToolRegistry<S> {
     #[allow(dead_code)]
@@ -31,9 +37,9 @@ impl<S: Services> ToolRegistry<S> {
         &self,
         input: Tools,
         context: &mut ToolCallContext,
-    ) -> anyhow::Result<crate::ToolOutput> {
+    ) -> anyhow::Result<crate::ExecutionResult> {
         match input {
-            Tools::FSRead(input) => {
+            Tools::ForgeToolFsRead(input) => {
                 let is_explicit_range = input.start_line.is_some() | input.end_line.is_some();
 
                 let output = self
@@ -54,9 +60,9 @@ impl<S: Services> ToolRegistry<S> {
                 )
                 .await?;
 
-                Ok(crate::ToolOutput::FsRead(output))
+                Ok(crate::ExecutionResult::FsRead(output))
             }
-            Tools::FSWrite(input) => {
+            Tools::ForgeToolFsCreate(input) => {
                 let out = self
                     .services
                     .fs_create_service()
@@ -64,9 +70,9 @@ impl<S: Services> ToolRegistry<S> {
                     .await?;
                 send_write_context(context, &out, &input.path, self.services.as_ref()).await?;
 
-                Ok(crate::ToolOutput::from(out))
+                Ok(crate::ExecutionResult::from(out))
             }
-            Tools::FSSearch(input) => {
+            Tools::ForgeToolFsSearch(input) => {
                 let output = self
                     .services
                     .fs_search_service()
@@ -79,9 +85,9 @@ impl<S: Services> ToolRegistry<S> {
 
                 send_fs_search_context(self.services.as_ref(), context, &input, &output).await?;
 
-                Ok(crate::ToolOutput::from(output))
+                Ok(crate::ExecutionResult::from(output))
             }
-            Tools::FSRemove(input) => {
+            Tools::ForgeToolFsRemove(input) => {
                 let output = self
                     .services
                     .fs_remove_service()
@@ -90,9 +96,9 @@ impl<S: Services> ToolRegistry<S> {
 
                 send_fs_remove_context(context, &input.path, self.services.as_ref()).await?;
 
-                Ok(crate::ToolOutput::from(output))
+                Ok(crate::ExecutionResult::from(output))
             }
-            Tools::FSPatch(input) => {
+            Tools::ForgeToolFsPatch(input) => {
                 let output = self
                     .services
                     .fs_patch_service()
@@ -106,15 +112,15 @@ impl<S: Services> ToolRegistry<S> {
                 send_fs_patch_context(context, &input.path, &output, self.services.as_ref())
                     .await?;
 
-                Ok(crate::ToolOutput::from(output))
+                Ok(crate::ExecutionResult::from(output))
             }
-            Tools::FSUndo(input) => {
+            Tools::ForgeToolFsUndo(input) => {
                 let output = self.services.fs_undo_service().undo(input.path).await?;
                 send_fs_undo_context(context, &output).await?;
 
-                Ok(crate::ToolOutput::from(output))
+                Ok(crate::ExecutionResult::from(output))
             }
-            Tools::Shell(input) => {
+            Tools::ForgeToolProcessShell(input) => {
                 let output = self
                     .services
                     .shell_service()
@@ -122,9 +128,9 @@ impl<S: Services> ToolRegistry<S> {
                     .await?;
                 send_shell_output_context(context, &output).await?;
 
-                Ok(crate::ToolOutput::from(output))
+                Ok(crate::ExecutionResult::from(output))
             }
-            Tools::NetFetch(input) => {
+            Tools::ForgeToolNetFetch(input) => {
                 let output = self
                     .services
                     .net_fetch_service()
@@ -133,9 +139,9 @@ impl<S: Services> ToolRegistry<S> {
 
                 send_net_fetch_context(context, &output, &input.url).await?;
 
-                Ok(crate::ToolOutput::from(output))
+                Ok(crate::ExecutionResult::from(output))
             }
-            Tools::Followup(input) => {
+            Tools::ForgeToolFollowup(input) => {
                 let output = self
                     .services
                     .follow_up_service()
@@ -154,43 +160,99 @@ impl<S: Services> ToolRegistry<S> {
                     .await?;
                 context.set_complete().await;
 
-                Ok(crate::ToolOutput::from(output))
+                Ok(crate::ExecutionResult::from(output))
             }
-            Tools::AttemptCompletion(input) => {
+            Tools::ForgeToolAttemptCompletion(input) => {
                 send_completion_context(context, input).await?;
-                Ok(crate::ToolOutput::AttemptCompletion)
+                Ok(crate::ExecutionResult::AttemptCompletion)
             }
         }
     }
+    async fn call_forge_tool(
+        &self,
+        input: ToolCallFull,
+        context: &mut ToolCallContext,
+    ) -> anyhow::Result<ToolOutput> {
+        let tool_input =
+            serde_json::from_value::<Tools>(input.arguments).map_err(Error::ToolCallArgument)?;
+
+        let out = self.call_internal(tool_input.clone(), context).await?;
+        let truncation_path = out.to_create_temp(self.services.as_ref()).await?;
+        let env = self.services.environment_service().get_environment();
+
+        out.into_tool_output(Some(tool_input), truncation_path, &env)
+    }
+
+    async fn call_mcp_tool(
+        &self,
+        input: ToolCallFull,
+        context: &mut ToolCallContext,
+        tool: Arc<Tool>,
+    ) -> anyhow::Result<ToolOutput> {
+        let output = tool.executable.call(context, input.arguments).await;
+        if let Err(error) = &output {
+            tracing::warn!(cause = ?error, tool = %input.name, "Tool Call Failure");
+        }
+        output
+    }
+
+    async fn call_with_timeout<F, Fut>(
+        &self,
+        tool_name: &ToolName,
+        future: F,
+    ) -> anyhow::Result<ToolOutput>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = anyhow::Result<ToolOutput>>,
+    {
+        timeout(TOOL_CALL_TIMEOUT, future())
+            .await
+            .context(Error::ToolCallTimeout {
+                timeout: TOOL_CALL_TIMEOUT.as_secs() / 60,
+                tool_name: tool_name.clone(),
+            })?
+    }
+
+    async fn call_inner(
+        &self,
+        input: ToolCallFull,
+        context: &mut ToolCallContext,
+    ) -> anyhow::Result<ToolOutput> {
+        tracing::info!(tool_name = %input.name, arguments = %input.arguments, "Executing tool call");
+        let tool_name = input.name.clone();
+
+        // First, try to call a Forge tool
+        if Tools::contains(&input.name) {
+            self.call_with_timeout(&tool_name, || self.call_forge_tool(input.clone(), context))
+                .await
+        } else if let Some(tool) = self.services.mcp_service().find(&input.name).await? {
+            self.call_with_timeout(&tool_name, || self.call_mcp_tool(input, context, tool))
+                .await
+        } else {
+            Err(Error::ToolNotFound(input.name).into())
+        }
+    }
+
     #[allow(dead_code)]
-    pub async fn call(&self, input: ToolCallFull, context: &mut ToolCallContext) -> ToolResult {
-        let Ok(tool_input) = serde_json::from_value::<Tools>(input.arguments) else {
-            return ToolResult::new(input.name)
-                .failure(anyhow::anyhow!("Failed to parse tool input arguments"));
-        };
+    async fn call(&self, context: &mut ToolCallContext, call: ToolCallFull) -> ToolResult {
+        let call_clone = call.clone();
+        let output = self.call_inner(call, context).await;
 
-        let result = self.call_internal(tool_input.clone(), context).await;
-        match result {
-            Ok(out) => {
-                let Ok(truncation_path) = out.to_create_temp(self.services.as_ref()).await else {
-                    return ToolResult::new(input.name)
-                        .failure(anyhow::anyhow!("Failed to truncate output"));
-                };
-
-                let env = self.services.environment_service().get_environment();
-
-                out.to_tool_result(input.name, Some(tool_input), truncation_path, &env)
-            }
-            Err(err) => ToolResult::new(input.name).failure(err),
-        }
+        ToolResult::new(call_clone.name)
+            .call_id(call_clone.call_id)
+            .output(output)
     }
+
     #[allow(dead_code)]
     pub async fn list(&self) -> anyhow::Result<Vec<ToolDefinition>> {
-        Ok(Tools::iter().map(|tool| tool.definition()).collect())
-    }
-    #[allow(dead_code)]
-    pub async fn find(&self, _: &ToolName) -> anyhow::Result<Option<Arc<Tool>>> {
-        unimplemented!()
+        let mcp_tools = self.services.mcp_service().list().await?;
+
+        let tools = Tools::iter()
+            .map(|tool| tool.definition())
+            .chain(mcp_tools.into_iter())
+            .collect::<Vec<_>>();
+
+        Ok(tools)
     }
 }
 
