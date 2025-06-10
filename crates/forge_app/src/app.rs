@@ -8,7 +8,7 @@ use forge_stream::MpscStream;
 use crate::tool_registry::ToolRegistry;
 use crate::{
     AttachmentService, ConversationService, EnvironmentService, FileDiscoveryService, Orchestrator,
-    ProviderService, Services, ToolService, WorkflowService,
+    ProviderService, Services, WorkflowService,
 };
 
 /// ForgeApp handles the core chat functionality by orchestrating various
@@ -16,7 +16,6 @@ use crate::{
 /// ForgeAPI chat method.
 pub struct ForgeApp<S: Services> {
     services: Arc<S>,
-    #[allow(dead_code)]
     tool_registry: ToolRegistry<S>,
 }
 
@@ -43,7 +42,7 @@ impl<S: Services> ForgeApp<S> {
             .expect("conversation for the request should've been created at this point.");
 
         // Get tool definitions and models
-        let tool_definitions = services.tool_service().list().await?;
+        let tool_definitions = self.tool_registry.list().await?;
         let models = services.provider_service().models().await?;
 
         // Discover files using the discovery service
