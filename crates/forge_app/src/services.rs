@@ -39,10 +39,17 @@ pub struct SearchResult {
 }
 
 #[derive(Debug)]
-pub struct FetchOutput {
+pub struct HttpResponse {
     pub content: String,
     pub code: u16,
-    pub context: String,
+    pub context: ResponseContext,
+    pub content_type: String,
+}
+
+#[derive(Debug)]
+pub enum ResponseContext {
+    Parsed,
+    Raw,
 }
 
 #[derive(Debug)]
@@ -245,7 +252,7 @@ pub trait FsUndoService: Send + Sync {
 #[async_trait::async_trait]
 pub trait NetFetchService: Send + Sync {
     /// Fetches content from a URL and returns it as a string.
-    async fn fetch(&self, url: String, raw: Option<bool>) -> anyhow::Result<FetchOutput>;
+    async fn fetch(&self, url: String, raw: Option<bool>) -> anyhow::Result<HttpResponse>;
 }
 
 #[async_trait::async_trait]
