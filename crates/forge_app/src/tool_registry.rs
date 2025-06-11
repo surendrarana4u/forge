@@ -6,8 +6,8 @@ use std::time::Duration;
 use anyhow::Context;
 use forge_display::{DiffFormat, GrepFormat, TitleFormat};
 use forge_domain::{
-    Agent, AttemptCompletion, FSSearch, Tool, ToolCallContext, ToolCallFull, ToolDefinition,
-    ToolName, ToolOutput, ToolResult, Tools,
+    Agent, AttemptCompletion, FSSearch, ToolCallContext, ToolCallFull, ToolDefinition, ToolName,
+    ToolOutput, ToolResult, Tools,
 };
 use regex::Regex;
 use strum::IntoEnumIterator;
@@ -184,19 +184,6 @@ impl<S: Services> ToolRegistry<S> {
         out.into_tool_output(tool_input, truncation_path, &env)
     }
 
-    async fn call_mcp_tool(
-        &self,
-        input: ToolCallFull,
-        context: &mut ToolCallContext,
-        tool: Arc<Tool>,
-    ) -> anyhow::Result<ToolOutput> {
-        let output = tool.executable.call(context, input.arguments).await;
-        if let Err(error) = &output {
-            tracing::warn!(cause = ?error, tool = %input.name, "Tool Call Failure");
-        }
-        output
-    }
-
     async fn call_with_timeout<F, Fut>(
         &self,
         tool_name: &ToolName,
@@ -229,8 +216,18 @@ impl<S: Services> ToolRegistry<S> {
         if Tools::contains(&input.name) {
             self.call_with_timeout(&tool_name, || self.call_forge_tool(input.clone(), context))
                 .await
-        } else if let Some(tool) = self.services.mcp_service().find(&input.name).await? {
-            self.call_with_timeout(&tool_name, || self.call_mcp_tool(input, context, tool))
+        } else if self
+            .services
+            .mcp_service()
+            .find(&input.name)
+            .await?
+            .is_some()
+        {
+            context
+                .send_text(TitleFormat::info("MCP").sub_title(input.name.as_str()))
+                .await?;
+
+            self.call_with_timeout(&tool_name, || self.services.mcp_service().call(input))
                 .await
         } else {
             Err(Error::ToolNotFound(input.name).into())
