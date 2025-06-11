@@ -41,6 +41,11 @@ pub struct Agent {
     #[merge(strategy = crate::merge::std::overwrite)]
     pub id: AgentId,
 
+    /// Human-readable title for the agent
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[merge(strategy = crate::merge::option)]
+    pub title: Option<String>,
+
     // The language model ID to be used by this agent
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[merge(strategy = crate::merge::option)]
@@ -148,6 +153,7 @@ impl Agent {
     pub fn new(id: impl ToString) -> Self {
         Self {
             id: AgentId::new(id),
+            title: None,
             tool_supported: None,
             model: None,
             description: None,

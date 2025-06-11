@@ -395,17 +395,17 @@ impl<F: API> UI<F> {
                     .agents
                     .into_iter()
                     .map(|agent| {
-                        if let Some(desc) = &agent.description {
+                        if let Some(title) = &agent.title {
                             let label = format!(
                                 "{:<n$} {}",
                                 agent.id.as_str().to_case(Case::UpperSnake).bold(),
-                                desc.lines().collect::<Vec<_>>().join(" ").dimmed()
+                                title.lines().collect::<Vec<_>>().join(" ").dimmed()
                             );
                             Agent { label, id: agent.id.to_string() }
                         } else {
                             Agent {
                                 id: agent.id.to_string(),
-                                label: "<Missing agent description>".to_string(),
+                                label: "<Missing agent title>".to_string(),
                             }
                         }
                     })

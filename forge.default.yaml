@@ -15,7 +15,13 @@ models:
 
 agents:
   - id: act
-    description: "Implementation focussed"
+    title: "Implementation focussed"
+    description: |-
+      Implementation-focused agent designed to execute tasks by making actual changes to your codebase,
+      running shell commands, creating/modifying files, and performing hands-on software development work.
+      Use this agent when you need to build features, fix bugs, refactor code, install dependencies, or
+      make any concrete changes to your project. It follows a structured approach with task analysis,
+      solution strategy, implementation, and quality assurance.
     compact:
       max_tokens: 2000
       token_threshold: 160000
@@ -48,7 +54,14 @@ agents:
     max_walker_depth: 1
 
   - id: plan
-    description: "Analysis and planning focussed"
+    title: "Analysis and planning focussed"
+    description: |-
+      Analysis and planning-focused agent designed to examine your codebase, create detailed
+      implementation plans, and provide strategic recommendations without making any actual changes.
+      Use this agent when you need project analysis, architectural guidance, documentation creation,
+      risk assessment, or comprehensive planning before implementation. It creates detailed Markdown
+      plans in the plans/ directory with objectives, implementation steps, verification criteria,
+      and alternative approaches for future execution.
     compact:
       max_tokens: 2000
       token_threshold: 120000
