@@ -33,7 +33,7 @@ impl ExecutionResult {
         input: Tools,
         truncation_path: Option<PathBuf>,
         env: &Environment,
-    ) -> anyhow::Result<forge_domain::ToolOutput> {
+    ) -> forge_domain::ToolOutput {
         match (input, self) {
             (Tools::ForgeToolFsRead(input), ExecutionResult::FsRead(out)) => match &out.content {
                 Content::File(content) => {
@@ -44,7 +44,7 @@ impl ExecutionResult {
                         .attr("total_lines", content.lines().count())
                         .cdata(content);
 
-                    Ok(forge_domain::ToolOutput::text(elm))
+                    forge_domain::ToolOutput::text(elm)
                 }
             },
             (Tools::ForgeToolFsCreate(input), ExecutionResult::FsCreate(output)) => {
@@ -65,10 +65,10 @@ impl ExecutionResult {
                     elm = elm.append(Element::new("warning").text(warning));
                 }
 
-                Ok(forge_domain::ToolOutput::text(elm))
+                forge_domain::ToolOutput::text(elm)
             }
             (Tools::ForgeToolFsRemove(input), ExecutionResult::FsRemove(output)) => {
-                let display_path = display_path(env, Path::new(&input.path))?;
+                let display_path = display_path(env, Path::new(&input.path));
                 let elm = if output.completed {
                     Element::new("file_removed")
                         .attr("path", display_path)
@@ -79,7 +79,7 @@ impl ExecutionResult {
                         .attr("status", "not_found")
                 };
 
-                Ok(forge_domain::ToolOutput::text(elm))
+                forge_domain::ToolOutput::text(elm)
             }
             (Tools::ForgeToolFsSearch(input), ExecutionResult::FsSearch(output)) => {
                 match output {
@@ -113,11 +113,9 @@ impl ExecutionResult {
                             ));
                         }
 
-                        Ok(forge_domain::ToolOutput::text(result))
+                        forge_domain::ToolOutput::text(result)
                     }
-                    None => Ok(forge_domain::ToolOutput::text(
-                        "No matches found".to_string(),
-                    )),
+                    None => forge_domain::ToolOutput::text("No matches found".to_string()),
                 }
             }
             (Tools::ForgeToolFsPatch(input), ExecutionResult::FsPatch(output)) => {
@@ -134,7 +132,7 @@ impl ExecutionResult {
                     elm = elm.append(Element::new("warning").text(warning));
                 }
 
-                Ok(forge_domain::ToolOutput::text(elm))
+                forge_domain::ToolOutput::text(elm)
             }
             (Tools::ForgeToolFsUndo(input), ExecutionResult::FsUndo(output)) => {
                 let diff = DiffFormat::format(&output.before_undo, &output.after_undo);
@@ -143,7 +141,7 @@ impl ExecutionResult {
                     .attr("status", "restored")
                     .cdata(strip_ansi_codes(&diff));
 
-                Ok(forge_domain::ToolOutput::text(elm))
+                forge_domain::ToolOutput::text(elm)
             }
             (Tools::ForgeToolNetFetch(input), ExecutionResult::NetFetch(output)) => {
                 let mut metadata = FrontMatter::default()
@@ -173,9 +171,7 @@ impl ExecutionResult {
                     _ => String::new(),
                 };
 
-                Ok(forge_domain::ToolOutput::text(format!(
-                    "{metadata}{truncation_tag}"
-                )))
+                forge_domain::ToolOutput::text(format!("{metadata}{truncation_tag}"))
             }
             (_, ExecutionResult::Shell(output)) => {
                 let mut metadata = FrontMatter::default().add("command", &output.output.command);
@@ -233,24 +229,24 @@ impl ExecutionResult {
                 }
 
                 if is_success {
-                    Ok(forge_domain::ToolOutput::text(result))
+                    forge_domain::ToolOutput::text(result)
                 } else {
-                    anyhow::bail!(result)
+                    panic!("{}", result)
                 }
             }
             (_, ExecutionResult::FollowUp(output)) => match output {
                 None => {
                     let elm = Element::new("interrupted").text("No feedback provided");
-                    Ok(forge_domain::ToolOutput::text(elm))
+                    forge_domain::ToolOutput::text(elm)
                 }
                 Some(content) => {
                     let elm = Element::new("feedback").text(content);
-                    Ok(forge_domain::ToolOutput::text(elm))
+                    forge_domain::ToolOutput::text(elm)
                 }
             },
-            (_, ExecutionResult::AttemptCompletion) => Ok(forge_domain::ToolOutput::text(
-                "[Task was completed successfully. Now wait for user feedback]".to_string(),
-            )),
+            (_, ExecutionResult::AttemptCompletion) => forge_domain::ToolOutput::text(
+                Element::new("success").text("The task is complete. Please continue."),
+            ),
             // Panic case for mismatched execution result and input tool types
             (input_tool, execution_result) => {
                 panic!(
@@ -404,7 +400,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -427,7 +423,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -450,7 +446,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -474,9 +470,7 @@ mod tests {
         let env = fixture_environment();
         let truncation_path = Some(PathBuf::from("/tmp/truncated_content.txt"));
 
-        let actual = fixture
-            .into_tool_output(input, truncation_path, &env)
-            .unwrap();
+        let actual = fixture.into_tool_output(input, truncation_path, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -498,7 +492,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -520,7 +514,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -542,7 +536,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -558,7 +552,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -574,7 +568,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -597,7 +591,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -615,7 +609,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -638,7 +632,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -661,7 +655,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -680,7 +674,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -701,7 +695,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -727,7 +721,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -750,7 +744,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
@@ -772,7 +766,7 @@ mod tests {
 
         let env = fixture_environment();
 
-        let actual = fixture.into_tool_output(input, None, &env).unwrap();
+        let actual = fixture.into_tool_output(input, None, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
