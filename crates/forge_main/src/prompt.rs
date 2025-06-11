@@ -3,24 +3,23 @@ use std::env;
 use std::fmt::Write;
 use std::process::Command;
 
+use convert_case::{Case, Casing};
 use derive_setters::Setters;
-use forge_api::{ModelId, Usage};
+use forge_api::{AgentId, ModelId, Usage};
 use forge_tracker::VERSION;
 use nu_ansi_term::{Color, Style};
 use reedline::{Prompt, PromptHistorySearchStatus};
-
-use crate::state::Mode;
 
 // Constants
 const MULTILINE_INDICATOR: &str = "::: ";
 const RIGHT_CHEVRON: &str = "❯";
 
 /// Very Specialized Prompt for the Agent Chat
-#[derive(Clone, Default, Setters)]
+#[derive(Clone, Setters)]
 #[setters(strip_option, borrow_self)]
 pub struct ForgePrompt {
     pub usage: Option<Usage>,
-    pub mode: Mode,
+    pub agent_id: AgentId,
     pub model: Option<ModelId>,
 }
 
@@ -51,7 +50,7 @@ impl Prompt for ForgePrompt {
         write!(
             result,
             "{} {}",
-            mode_style.paint(self.mode.to_string()),
+            mode_style.paint(self.agent_id.to_string().to_case(Case::UpperSnake)),
             folder_style.paint(&current_dir)
         )
         .unwrap();
@@ -181,6 +180,12 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::*;
+
+    impl Default for ForgePrompt {
+        fn default() -> Self {
+            ForgePrompt { usage: None, agent_id: AgentId::new("act"), model: None }
+        }
+    }
 
     #[test]
     fn test_render_prompt_left() {
