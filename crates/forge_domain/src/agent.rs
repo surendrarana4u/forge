@@ -79,13 +79,13 @@ pub struct Agent {
 
     /// Tools that the agent can use    
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[merge(strategy = crate::merge::option)]
+    #[merge(strategy = merge_opt_vec)]
     pub tools: Option<Vec<ToolName>>,
 
     // The transforms feature has been removed
     /// Used to specify the events the agent is interested in    
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[merge(strategy = merge_subscription)]
+    #[merge(strategy = merge_opt_vec)]
     pub subscribe: Option<Vec<String>>,
 
     /// Maximum number of turns the agent can take    
@@ -150,7 +150,7 @@ pub struct Agent {
     pub top_k: Option<TopK>,
 }
 
-fn merge_subscription(base: &mut Option<Vec<String>>, other: Option<Vec<String>>) {
+fn merge_opt_vec<T>(base: &mut Option<Vec<T>>, other: Option<Vec<T>>) {
     if let Some(other) = other {
         if let Some(base) = base {
             base.extend(other);
@@ -164,22 +164,22 @@ impl Agent {
     pub fn new(id: impl Into<AgentId>) -> Self {
         Self {
             id: id.into(),
-            title: None,
-            tool_supported: None,
-            model: None,
-            description: None,
-            system_prompt: None,
-            user_prompt: None,
-            tools: None,
+            title: Default::default(),
+            tool_supported: Default::default(),
+            model: Default::default(),
+            description: Default::default(),
+            system_prompt: Default::default(),
+            user_prompt: Default::default(),
+            tools: Default::default(),
             // transforms field removed
-            subscribe: None,
-            max_turns: None,
-            max_walker_depth: None,
-            compact: None,
-            custom_rules: None,
-            temperature: None,
-            top_p: None,
-            top_k: None,
+            subscribe: Default::default(),
+            max_turns: Default::default(),
+            max_walker_depth: Default::default(),
+            compact: Default::default(),
+            custom_rules: Default::default(),
+            temperature: Default::default(),
+            top_p: Default::default(),
+            top_k: Default::default(),
         }
     }
 
@@ -280,7 +280,7 @@ mod tests {
         assert!(tools.contains(&ToolName::new("tool2")));
         assert!(tools.contains(&ToolName::new("tool3")));
 
-        // Base has a value, should not be overwritten
+        // Base has a value, should merge with other's tools
         let mut base =
             Agent::new("Base").tools(vec![ToolName::new("tool1"), ToolName::new("tool2")]);
         let other = Agent::new("Other").tools(vec![ToolName::new("tool3"), ToolName::new("tool4")]);
@@ -288,7 +288,9 @@ mod tests {
 
         // Should have other's tools
         let tools = base.tools.as_ref().unwrap();
-        assert_eq!(tools.len(), 2);
+        assert_eq!(tools.len(), 4);
+        assert!(tools.contains(&ToolName::new("tool1")));
+        assert!(tools.contains(&ToolName::new("tool2")));
         assert!(tools.contains(&ToolName::new("tool3")));
         assert!(tools.contains(&ToolName::new("tool4")));
     }
