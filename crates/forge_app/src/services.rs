@@ -35,7 +35,19 @@ pub enum Content {
 
 #[derive(Debug)]
 pub struct SearchResult {
-    pub matches: Vec<String>,
+    pub matches: Vec<Match>,
+}
+
+#[derive(Debug)]
+pub struct Match {
+    pub path: String,
+    pub result: Option<MatchResult>,
+}
+
+#[derive(Debug)]
+pub enum MatchResult {
+    Error(String),
+    Found { line_number: usize, line: String },
 }
 
 #[derive(Debug)]
@@ -61,9 +73,7 @@ pub struct FsCreateOutput {
 }
 
 #[derive(Debug)]
-pub struct FsRemoveOutput {
-    pub completed: bool,
-}
+pub struct FsRemoveOutput {}
 
 #[derive(Debug, derive_more::From)]
 pub struct FsUndoOutput {

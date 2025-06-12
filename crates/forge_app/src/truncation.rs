@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use crate::{FsCreateService, Services};
+use forge_domain::Environment;
+
+use crate::utils::format_match;
+use crate::{FsCreateService, Match, Services};
 
 /// Number of lines to keep at the start of truncated output
 pub(crate) const PREFIX_LINES: usize = 200;
@@ -197,12 +200,18 @@ pub struct TruncatedSearchOutput {
 
 /// Truncates search output based on line limit
 pub fn truncate_search_output(
-    output: &[String],
+    output: &[Match],
     path: &str,
     regex: Option<&String>,
     file_pattern: Option<&String>,
+    env: &Environment,
 ) -> TruncatedSearchOutput {
-    let output = output.join("\n");
+    let output = output
+        .iter()
+        .map(|v| format_match(v, env))
+        .collect::<Vec<_>>()
+        .join("\n");
+
     let total_lines = output.lines().count() as u64;
     let is_truncated = total_lines > SEARCH_MAX_LINES;
 

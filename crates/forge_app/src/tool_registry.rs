@@ -14,7 +14,7 @@ use strum::IntoEnumIterator;
 use tokio::time::timeout;
 
 use crate::error::Error;
-use crate::utils::display_path;
+use crate::utils::{display_path, format_match};
 use crate::{
     Content, EnvironmentService, FollowUpService, FsCreateOutput, FsCreateService, FsPatchService,
     FsReadService, FsRemoveService, FsSearchService, FsUndoService, HttpResponse, McpService,
@@ -384,7 +384,13 @@ async fn send_fs_search_context<S: Services>(
 
     if let Some(output) = output.as_ref() {
         context.send_text(&title).await?;
-        let mut formatted_output = GrepFormat::new(output.matches.clone());
+        let mut formatted_output = GrepFormat::new(
+            output
+                .matches
+                .iter()
+                .map(|v| format_match(v, &env))
+                .collect::<Vec<_>>(),
+        );
         if let Some(regex) = input.regex.as_ref().and_then(|v| Regex::new(v).ok()) {
             formatted_output = formatted_output.regex(regex);
         }
