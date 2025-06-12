@@ -184,53 +184,49 @@ pub fn truncate_fetch_content(content: &str, truncation_limit: usize) -> Truncat
     TruncatedFetchOutput { content: truncated_content }
 }
 
-/// Maximum search lines before truncation
-pub const SEARCH_MAX_LINES: u64 = 200;
-
 /// Represents the result of fs_search truncation
 #[derive(Debug)]
 pub struct TruncatedSearchOutput {
     pub output: String,
-    pub path: String,
-    pub regex: Option<String>,
-    pub file_pattern: Option<String>,
     pub total_lines: u64,
-    pub max_lines: u64,
+    pub start_line: u64,
+    pub end_line: u64,
 }
 
 /// Truncates search output based on line limit
 pub fn truncate_search_output(
     output: &[Match],
-    path: &str,
-    regex: Option<&String>,
-    file_pattern: Option<&String>,
+    start_line: u64,
+    count: u64,
     env: &Environment,
 ) -> TruncatedSearchOutput {
+    let total_outputs = output.len() as u64;
+    let is_truncated = total_outputs > count;
     let output = output
         .iter()
         .map(|v| format_match(v, env))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let total_lines = output.lines().count() as u64;
-    let is_truncated = total_lines > SEARCH_MAX_LINES;
+        .collect::<Vec<_>>();
 
     let truncated_output = if is_truncated {
         output
-            .lines()
-            .take(SEARCH_MAX_LINES as usize)
+            .iter()
+            .skip(start_line as usize)
+            .take(count as usize)
+            .map(String::from)
             .collect::<Vec<_>>()
             .join("\n")
     } else {
-        output.to_string()
+        output.join("\n")
     };
 
     TruncatedSearchOutput {
         output: truncated_output,
-        path: path.to_string(),
-        regex: regex.map(|s| s.to_string()),
-        file_pattern: file_pattern.map(|s| s.to_string()),
-        total_lines,
-        max_lines: SEARCH_MAX_LINES,
+        total_lines: total_outputs,
+        start_line,
+        end_line: if is_truncated {
+            start_line + count
+        } else {
+            total_outputs
+        },
     }
 }
