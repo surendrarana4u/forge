@@ -2,6 +2,10 @@
 source: crates/forge_app/src/execution_result.rs
 expression: to_value(actual)
 ---
-<file_diff path="/home/user/test.txt" status="restored"><![CDATA[1        |-ABC
+<file_diff
+  path="/home/user/test.txt"
+  status="restored"
+><![CDATA[1        |-ABC
     1    |+PQR
-]]></file_diff>
+]]>
+</file_diff>

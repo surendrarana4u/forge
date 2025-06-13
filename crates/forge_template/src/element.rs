@@ -74,20 +74,32 @@ impl Element {
     pub fn render(&self) -> String {
         let mut result = String::new();
 
-        result.push_str(&format!("<{}", self.name));
-        for (key, value) in &self.attr {
-            result.push_str(&format!(" {key}=\"{value}\""));
+        if self.attr.is_empty() {
+            result.push_str(&format!("<{}>", self.name));
+        } else {
+            result.push_str(&format!("<{}", self.name));
+            for (key, value) in &self.attr {
+                result.push_str(&format!("\n  {key}=\"{value}\""));
+            }
+
+            result.push_str("\n>");
         }
-        result.push('>');
 
         if let Some(ref text) = self.text {
             result.push_str(text);
         }
 
         for child in &self.children {
+            result.push('\n');
             result.push_str(&child.render());
         }
-        result.push_str(&format!("</{}>", self.name));
+
+        if self.children.is_empty() && self.attr.is_empty() {
+            result.push_str(&format!("</{}>", self.name));
+        } else {
+            result.push_str(&format!("\n</{}>", self.name));
+        }
+
         result
     }
 }
@@ -139,7 +151,7 @@ mod test {
     fn test_element_with_attributes() {
         let html = Element::new("div").attr("class", "test");
         let actual = html.render();
-        let expected = "<div class=\"test\"></div>";
+        let expected = "<div\n  class=\"test\"\n>\n</div>";
         assert_eq!(actual, expected);
     }
 
@@ -149,7 +161,7 @@ mod test {
             .attr("class", "test")
             .append(Element::new("span"));
         let actual = html.render();
-        let expected = "<div class=\"test\"><span></span></div>";
+        let expected = "<div\n  class=\"test\"\n>\n<span></span>\n</div>";
         assert_eq!(actual, expected);
     }
 
@@ -159,7 +171,7 @@ mod test {
             .attr("class", "test")
             .append([Element::new("span"), Element::new("p")]);
         let actual = html.render();
-        let expected = "<div class=\"test\"><span></span><p></p></div>";
+        let expected = "<div\n  class=\"test\"\n>\n<span></span>\n<p></p>\n</div>";
         assert_eq!(actual, expected);
     }
 
@@ -170,8 +182,7 @@ mod test {
             Element::new("p").attr("class", "child"),
         ]);
         let actual = html.render();
-        let expected =
-            "<div class=\"test\"><span class=\"child\"></span><p class=\"child\"></p></div>";
+        let expected = "<div\n  class=\"test\"\n>\n<span\n  class=\"child\"\n>\n</span>\n<p\n  class=\"child\"\n>\n</p>\n</div>";
         assert_eq!(actual, expected);
     }
 
@@ -182,7 +193,8 @@ mod test {
             .text("Hello, world!")
             .append([Element::new("span").attr("class", "child")]);
         let actual = html.render();
-        let expected = "<div class=\"test\">Hello, world!<span class=\"child\"></span></div>";
+        let expected =
+            "<div\n  class=\"test\"\n>Hello, world!\n<span\n  class=\"child\"\n>\n</span>\n</div>";
         assert_eq!(actual, expected);
     }
     #[test]
@@ -191,7 +203,7 @@ mod test {
             .class("first-class")
             .class("second-class");
         let actual = html.render();
-        let expected = "<div class=\"first-class second-class\"></div>";
+        let expected = "<div\n  class=\"first-class second-class\"\n>\n</div>";
         assert_eq!(actual, expected);
     }
     #[test]
@@ -205,13 +217,13 @@ mod test {
     fn test_element_with_css_style_classes() {
         let html = Element::new("div.foo.bar");
         let actual = html.render();
-        let expected = "<div class=\"foo bar\"></div>";
+        let expected = "<div\n  class=\"foo bar\"\n>\n</div>";
         assert_eq!(actual, expected);
 
         // Test that we can still add more classes
         let html = Element::new("div.foo.bar").class("extra-class");
         let actual = html.render();
-        let expected = "<div class=\"foo bar extra-class\"></div>";
+        let expected = "<div\n  class=\"foo bar extra-class\"\n>\n</div>";
         assert_eq!(actual, expected);
     }
 
@@ -219,7 +231,7 @@ mod test {
     fn test_append_if_some() {
         let html = Element::new("div").append(Some(Element::new("span")));
         let actual = html.render();
-        let expected = "<div><span></span></div>";
+        let expected = "<div>\n<span></span>\n</div>";
         assert_eq!(actual, expected);
     }
 
@@ -240,7 +252,7 @@ mod test {
         ];
         let html = Element::new("div").append(elements);
         let actual = html.render();
-        let expected = "<div><span>First</span><span>Second</span><span>Third</span></div>";
+        let expected = "<div>\n<span>First</span>\n<span>Second</span>\n<span>Third</span>\n</div>";
         assert_eq!(actual, expected);
     }
 
@@ -258,7 +270,7 @@ mod test {
         let html =
             Element::new("div").append((0..3).map(|i| Element::new("span").text(i.to_string())));
         let actual = html.render();
-        let expected = "<div><span>0</span><span>1</span><span>2</span></div>";
+        let expected = "<div>\n<span>0</span>\n<span>1</span>\n<span>2</span>\n</div>";
         assert_eq!(actual, expected);
     }
 }
