@@ -45,8 +45,9 @@ impl Console {
                     tokio::spawn(TRACKER.dispatch(forge_tracker::EventKind::Prompt(text.clone())));
                     match self.command.parse(&text) {
                         Ok(command) => return Ok(command),
-                        Err(e) => {
-                            eprintln!("{}", TitleFormat::error(e.to_string()));
+                        Err(error) => {
+                            tracing::error!(error = ?error);
+                            eprintln!("{}", TitleFormat::error(error.to_string()));
                         }
                     }
                 }
