@@ -224,7 +224,7 @@ impl<S: AgentService> Orchestrator<S> {
             .services
             .chat(model_id, transformers.transform(context))
             .await?;
-        response.into_full(true).await
+        response.into_full(!tool_supported).await
     }
 
     // Create a helper method with the core functionality
