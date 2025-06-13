@@ -34,5 +34,5 @@ where
 fn should_retry(error: &anyhow::Error) -> bool {
     error
         .downcast_ref::<Error>()
-        .is_some_and(|error| matches!(error, Error::Retryable(_, _)))
+        .is_some_and(|error| matches!(error, Error::Retryable(_)))
 }
