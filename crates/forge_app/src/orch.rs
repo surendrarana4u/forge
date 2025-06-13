@@ -11,7 +11,6 @@ use tracing::{debug, info, warn};
 
 use crate::agent::AgentService;
 use crate::compact::Compactor;
-use crate::template::Templates;
 
 pub type ArcSender = Arc<tokio::sync::mpsc::Sender<anyhow::Result<ChatResponse>>>;
 
@@ -150,7 +149,7 @@ impl<S: AgentService> Orchestrator<S> {
         Ok(tool_supported)
     }
 
-    fn set_system_prompt(
+    async fn set_system_prompt(
         &mut self,
         context: Context,
         agent: &Agent,
@@ -184,7 +183,10 @@ impl<S: AgentService> Orchestrator<S> {
                 supports_parallel_tool_calls,
             };
 
-            let system_message = Templates::render(system_prompt.template.as_str(), &ctx)?;
+            let system_message = self
+                .services
+                .render(system_prompt.template.as_str(), &ctx)
+                .await?;
 
             context.set_first_system_message(system_message)
         } else {
@@ -252,10 +254,12 @@ impl<S: AgentService> Orchestrator<S> {
         context = context.tools(self.get_allowed_tools(&agent)?);
 
         // Render the system prompts with the variables
-        context = self.set_system_prompt(context, &agent, &variables)?;
+        context = self.set_system_prompt(context, &agent, &variables).await?;
 
         // Render user prompts
-        context = self.set_user_prompt(context, &agent, &variables, event)?;
+        context = self
+            .set_user_prompt(context, &agent, &variables, event)
+            .await?;
 
         if let Some(temperature) = agent.temperature {
             context = context.temperature(temperature);
@@ -365,12 +369,15 @@ impl<S: AgentService> Orchestrator<S> {
             if empty_tool_calls {
                 // No tool calls present, which doesn't mean task is complete so reprompt the
                 // agent to ensure the task complete.
-                let content = Templates::render(
-                    "{{> partial-tool-required.hbs}}",
-                    &serde_json::json!({
-                        "tool_supported": tool_supported
-                    }),
-                )?;
+                let content = self
+                    .services
+                    .render(
+                        "{{> forge-partial-tool-required.hbs}}",
+                        &serde_json::json!({
+                            "tool_supported": tool_supported
+                        }),
+                    )
+                    .await?;
                 context =
                     context.add_message(ContextMessage::user(content, model_id.clone().into()));
 
@@ -402,7 +409,7 @@ impl<S: AgentService> Orchestrator<S> {
         Ok(())
     }
 
-    fn set_user_prompt(
+    async fn set_user_prompt(
         &mut self,
         mut context: Context,
         agent: &Agent,
@@ -418,7 +425,9 @@ impl<S: AgentService> Orchestrator<S> {
                         .to_string(),
                 );
             debug!(event_context = ?event_context, "Event context");
-            Templates::render(user_prompt.template.as_str(), &event_context)?
+            self.services
+                .render(user_prompt.template.as_str(), &event_context)
+                .await?
         } else {
             // Use the raw event value as content if no user_prompt is provided
             event.value.to_string()
@@ -429,73 +438,5 @@ impl<S: AgentService> Orchestrator<S> {
         }
 
         Ok(context)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use pretty_assertions::assert_eq;
-    use serde_json::json;
-
-    use super::*;
-
-    #[test]
-    fn test_render_template_simple() {
-        // Fixture: Create test data
-        let data = json!({
-            "name": "Forge",
-            "version": "1.0",
-            "features": ["templates", "rendering", "handlebars"]
-        });
-
-        // Actual: Render a simple template
-        let template = "App: {{name}} v{{version}} - Features: {{#each features}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}";
-        let actual = Templates::render(template, &data).unwrap();
-
-        // Expected: Result should match the expected string
-        let expected = "App: Forge v1.0 - Features: templates, rendering, handlebars";
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_render_template_with_partial() {
-        // Fixture: Create test data
-        let data = json!({
-            "env": {
-                "os": "test-os",
-                "cwd": "/test/path",
-                "shell": "/bin/test",
-                "home": "/home/test"
-            },
-            "files": [
-                "/file1.txt",
-                "/file2.txt"
-            ],
-            "current_time": "2024-01-01 12:00:00 +00:00"
-        });
-
-        // Actual: Render the partial-system-info template
-        let actual = Templates::render("{{> partial-system-info.hbs }}", &data).unwrap();
-
-        // Expected: Result should contain the rendered system info with substituted
-        // values
-        assert!(actual.contains("<operating_system>test-os</operating_system>"));
-    }
-
-    #[test]
-    fn test_render_template_summary_frame() {
-        use pretty_assertions::assert_eq;
-
-        // Fixture: Create test data for the summary frame template
-        let data = serde_json::json!({
-            "summary": "This is a test summary of the conversation"
-        });
-
-        // Actual: Render the partial-summary-frame template
-        let actual = Templates::render("{{> partial-summary-frame.hbs}}", &data).unwrap();
-
-        // Expected: Result should contain the framed summary text
-        let expected = "Use the following summary as the authoritative reference for all coding\nsuggestions and decisions. Do not re-explain or revisit it unless I ask.\n\n<summary>\nThis is a test summary of the conversation\n</summary>\n\nProceed with implementation based on this context.";
-        assert_eq!(actual.trim(), expected);
     }
 }

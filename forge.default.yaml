@@ -28,10 +28,10 @@ agents:
       model: *advanced_model
       retention_window: 6
       message_threshold: 200
-      prompt: "{{> system-prompt-context-summarizer.hbs }}"
+      prompt: "{{> forge-system-prompt-context-summarizer.hbs }}"
     model: *advanced_model
     system_prompt: |-
-      {{> system-prompt-engineer-act.hbs }}
+      {{> forge-system-prompt-engineer-act.hbs }}
     user_prompt: |-
       {{#if (eq event.name 'forge/user_task_update')}}
       <feedback>{{event.value}}</feedback>
@@ -68,10 +68,10 @@ agents:
       model: *advanced_model
       retention_window: 6
       message_threshold: 200
-      prompt: "{{> system-prompt-context-summarizer.hbs }}"
+      prompt: "{{> forge-system-prompt-context-summarizer.hbs }}"
     model: *advanced_model
     system_prompt: |-
-      {{> system-prompt-engineer-plan.hbs }}
+      {{> forge-system-prompt-engineer-plan.hbs }}
     user_prompt: |-
       {{#if (eq event.name 'muse/user_task_update')}}
       <feedback>{{event.value}}</feedback>

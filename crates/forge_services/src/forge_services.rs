@@ -31,7 +31,7 @@ pub struct ForgeServices<F: Infrastructure> {
     tool_service: Arc<ForgeToolService<McpService<F>>>,
     provider_service: Arc<ForgeProviderService>,
     conversation_service: Arc<ForgeConversationService<McpService<F>>>,
-    template_service: Arc<ForgeTemplateService>,
+    template_service: Arc<ForgeTemplateService<F>>,
     attachment_service: Arc<ForgeChatRequest<F>>,
     workflow_service: Arc<ForgeWorkflowService<F>>,
     discovery_service: Arc<ForgeDiscoveryService<F>>,
@@ -53,7 +53,7 @@ impl<F: Infrastructure> ForgeServices<F> {
         let mcp_manager = Arc::new(ForgeMcpManager::new(infra.clone()));
         let mcp_service = Arc::new(ForgeMcpService::new(mcp_manager.clone(), infra.clone()));
         let tool_service = Arc::new(ForgeToolService::new(infra.clone(), mcp_service.clone()));
-        let template_service = Arc::new(ForgeTemplateService::new());
+        let template_service = Arc::new(ForgeTemplateService::new(infra.clone()));
         let provider_service = Arc::new(ForgeProviderService::new(infra.clone()));
         let attachment_service = Arc::new(ForgeChatRequest::new(infra.clone()));
 
@@ -98,7 +98,7 @@ impl<F: Infrastructure> Services for ForgeServices<F> {
     type ToolService = ForgeToolService<McpService<F>>;
     type ProviderService = ForgeProviderService;
     type ConversationService = ForgeConversationService<McpService<F>>;
-    type TemplateService = ForgeTemplateService;
+    type TemplateService = ForgeTemplateService<F>;
     type AttachmentService = ForgeChatRequest<F>;
     type EnvironmentService = F::EnvironmentService;
     type WorkflowService = ForgeWorkflowService<F>;

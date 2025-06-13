@@ -6,6 +6,7 @@ use forge_domain::*;
 use forge_stream::MpscStream;
 
 use crate::orch::Orchestrator;
+use crate::services::TemplateService;
 use crate::tool_registry::ToolRegistry;
 use crate::{
     AttachmentService, ConversationService, EnvironmentService, FileDiscoveryService,
@@ -63,6 +64,16 @@ impl<S: Services> ForgeApp<S> {
 
         // Get environment for orchestrator creation
         let environment = services.environment_service().get_environment();
+
+        // Register templates using workflow path or environment fallback
+        let template_path = workflow
+            .templates
+            .clone()
+            .unwrap_or_else(|| environment.templates().to_string_lossy().to_string());
+        services
+            .template_service()
+            .register_template(template_path)
+            .await?;
 
         // Always try to get attachments and overwrite them
         let attachments = services
