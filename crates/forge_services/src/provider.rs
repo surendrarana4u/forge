@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use forge_app::{EnvironmentService, ProviderService};
-use forge_domain::{
-    ChatCompletionMessage, Context as ChatContext, Model, ModelId, ResultStream, RetryConfig,
-};
+use forge_domain::{ChatCompletionMessage, Context as ChatContext, Model, ModelId, ResultStream};
 use forge_provider::Client;
 
 use crate::Infrastructure;
@@ -13,7 +11,6 @@ use crate::Infrastructure;
 pub struct ForgeProviderService {
     // The provider service implementation
     client: Arc<Client>,
-    retry_config: RetryConfig,
 }
 
 impl ForgeProviderService {
@@ -24,8 +21,7 @@ impl ForgeProviderService {
         let retry_config = env.retry_config.clone();
         let version = env.version();
         Self {
-            client: Arc::new(Client::new(provider, retry_config.clone(), version).unwrap()),
-            retry_config,
+            client: Arc::new(Client::new(provider, retry_config, version).unwrap()),
         }
     }
 }
@@ -37,12 +33,10 @@ impl ProviderService for ForgeProviderService {
         model: &ModelId,
         request: ChatContext,
     ) -> ResultStream<ChatCompletionMessage, anyhow::Error> {
-        self.retry_config
-            .retry(|| self.client.chat(model, request.clone()))
-            .await
+        self.client.chat(model, request).await
     }
 
     async fn models(&self) -> Result<Vec<Model>> {
-        self.retry_config.retry(|| self.client.models()).await
+        self.client.models().await
     }
 }

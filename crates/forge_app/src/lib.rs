@@ -4,6 +4,7 @@ mod compact;
 mod error;
 mod execution_result;
 mod orch;
+mod retry;
 mod services;
 mod template;
 mod tool_registry;
