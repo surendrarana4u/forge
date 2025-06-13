@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use forge_domain::{
-    Agent, ChatCompletionMessage, Context, ModelId, ResultStream, ToolCallContext, ToolCallFull,
-    ToolResult,
+    Agent, ChatCompletionMessage, Context, Conversation, ModelId, ResultStream, ToolCallContext,
+    ToolCallFull, ToolResult,
 };
 
 use crate::tool_registry::ToolRegistry;
-use crate::{ProviderService, Services};
+use crate::{ConversationService, ProviderService, Services};
 
 /// Agent service trait that provides core chat and tool call functionality.
 /// This trait abstracts the essential operations needed by the Orchestrator.
@@ -26,6 +26,9 @@ pub trait AgentService: Send + Sync + 'static {
         context: &mut ToolCallContext,
         call: ToolCallFull,
     ) -> ToolResult;
+
+    /// Synchronize the on-going conversation
+    async fn update(&self, conversation: Conversation) -> anyhow::Result<()>;
 }
 
 /// Blanket implementation of AgentService for any type that implements Services
@@ -50,5 +53,9 @@ where
     ) -> ToolResult {
         let registry = ToolRegistry::new(Arc::new(self.clone()));
         registry.call(agent, context, call).await
+    }
+
+    async fn update(&self, conversation: Conversation) -> anyhow::Result<()> {
+        self.conversation_service().upsert(conversation).await
     }
 }

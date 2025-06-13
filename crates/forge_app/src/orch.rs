@@ -310,6 +310,7 @@ impl<S: AgentService> Orchestrator<S> {
         while !is_complete {
             // Set context for the current loop iteration
             self.conversation.context = Some(context.clone());
+            self.services.update(self.conversation.clone()).await?;
 
             let ChatCompletionMessageFull { tool_calls, content, mut usage } = self
                 .environment
@@ -403,6 +404,7 @@ impl<S: AgentService> Orchestrator<S> {
 
             // Update context in the conversation
             self.conversation.context = Some(context.clone());
+            self.services.update(self.conversation.clone()).await?;
         }
 
         Ok(())
