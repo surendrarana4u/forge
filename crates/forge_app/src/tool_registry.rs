@@ -294,9 +294,10 @@ impl<S: Services> ToolRegistry<S> {
         } else if self
             .services
             .mcp_service()
-            .find(&input.name)
+            .list()
             .await?
-            .is_some()
+            .iter()
+            .any(|tool| tool.name == input.name)
         {
             context
                 .send_text(TitleFormat::info("MCP").sub_title(input.name.as_str()))

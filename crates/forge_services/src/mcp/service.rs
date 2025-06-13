@@ -5,7 +5,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use forge_app::{McpConfigManager, McpService};
 use forge_domain::{
-    McpConfig, McpServerConfig, Tool, ToolCallFull, ToolDefinition, ToolName, ToolOutput,
+    McpConfig, McpServerConfig, ToolCallFull, ToolDefinition, ToolName, ToolOutput,
 };
 use tokio::sync::{Mutex, RwLock};
 
@@ -104,17 +104,6 @@ where
         .map(|_| ())
     }
 
-    async fn find(&self, name: &ToolName) -> anyhow::Result<Option<Arc<Tool>>> {
-        self.init_mcp().await?;
-        match self.tools.read().await.get(name).cloned() {
-            Some(val) => Ok(Some(Arc::new(Tool {
-                executable: Box::new(val.executable),
-                definition: val.definition,
-            }))),
-            None => Ok(None),
-        }
-    }
-
     async fn list(&self) -> anyhow::Result<Vec<ToolDefinition>> {
         self.init_mcp().await?;
         Ok(self
@@ -146,10 +135,6 @@ where
 {
     async fn list(&self) -> anyhow::Result<Vec<ToolDefinition>> {
         self.list().await
-    }
-
-    async fn find(&self, name: &ToolName) -> anyhow::Result<Option<Arc<Tool>>> {
-        self.find(name).await
     }
 
     async fn call(&self, call: ToolCallFull) -> anyhow::Result<ToolOutput> {

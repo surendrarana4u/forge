@@ -1,10 +1,9 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use forge_domain::{
     Attachment, ChatCompletionMessage, CommandOutput, Context, Conversation, ConversationId,
-    Environment, File, McpConfig, Model, ModelId, PatchOperation, ResultStream, Scope, Tool,
-    ToolCallFull, ToolDefinition, ToolName, ToolOutput, Workflow,
+    Environment, File, McpConfig, Model, ModelId, PatchOperation, ResultStream, Scope,
+    ToolCallFull, ToolDefinition, ToolOutput, Workflow,
 };
 use merge::Merge;
 
@@ -104,7 +103,6 @@ pub trait McpConfigManager: Send + Sync {
 #[async_trait::async_trait]
 pub trait McpService: Send + Sync {
     async fn list(&self) -> anyhow::Result<Vec<ToolDefinition>>;
-    async fn find(&self, name: &ToolName) -> anyhow::Result<Option<Arc<Tool>>>;
     async fn call(&self, call: ToolCallFull) -> anyhow::Result<ToolOutput>;
 }
 

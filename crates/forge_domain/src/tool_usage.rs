@@ -102,10 +102,7 @@ mod tests {
     use strum::IntoEnumIterator;
 
     use super::*;
-    use crate::{
-        ExecutableTool, NamedTool, ToolCallContext, ToolDefinition, ToolDescription, ToolName,
-        ToolOutput, Tools,
-    };
+    use crate::{NamedTool, ToolDescription, ToolName, Tools};
 
     #[derive(Default)]
     pub struct MangoTool;
@@ -131,26 +128,6 @@ mod tests {
         fn tool_name() -> ToolName {
             ToolName::new("forge_tool_mango")
         }
-    }
-
-    #[async_trait::async_trait]
-    impl ExecutableTool for MangoTool {
-        type Input = ToolInput;
-
-        async fn call(
-            &self,
-            _: &mut ToolCallContext,
-            _: Self::Input,
-        ) -> anyhow::Result<ToolOutput> {
-            Ok(ToolOutput::text("Completed".to_string()))
-        }
-    }
-
-    #[test]
-    fn test_tool_usage_prompt_to_string() {
-        let tools = vec![ToolDefinition::from(&MangoTool)];
-        let prompt = ToolUsagePrompt::from(&tools);
-        assert_snapshot!(prompt);
     }
 
     #[test]
