@@ -301,11 +301,13 @@ impl<S: AgentService> Orchestrator<S> {
 
         self.conversation.context = Some(context.clone());
 
-        let mut tool_context = ToolCallContext::default().sender(self.sender.clone());
+        let mut tool_context = ToolCallContext::new(self.sender.clone());
+        // Indicates whether the tool execution has been completed
+        let mut is_complete = false;
 
         let mut empty_tool_call_count = 0;
         let is_tool_supported = self.is_tool_supported(&agent)?;
-        while !tool_context.get_complete().await {
+        while !is_complete {
             // Set context for the current loop iteration
             self.conversation.context = Some(context.clone());
 
@@ -341,6 +343,22 @@ impl<S: AgentService> Orchestrator<S> {
             let empty_tool_calls = tool_calls.is_empty();
 
             debug!(agent_id = %agent.id, tool_call_count = tool_calls.len(), "Tool call count");
+
+            is_complete = tool_calls.iter().any(|call| Tools::is_complete(&call.name));
+
+            if !is_complete {
+                // If task is completed we would have already displayed a message so we can
+                // ignore the content that's collected from the stream
+                self.send(ChatResponse::Text {
+                    text: remove_tag_with_prefix(&content, "forge_")
+                        .as_str()
+                        .to_string(),
+                    is_complete: true,
+                    is_md: true,
+                    is_summary: false,
+                })
+                .await?;
+            }
 
             // Process tool calls and update context
             context = context.append_message(
@@ -378,24 +396,9 @@ impl<S: AgentService> Orchestrator<S> {
                         empty_tool_call_count,
                         "Forced completion due to repeated empty tool calls"
                     );
-                    tool_context.set_complete().await;
                 }
             } else {
                 empty_tool_call_count = 0;
-
-                if !tool_context.is_complete {
-                    // If task is completed we would have already displayed a message so we can
-                    // ignore the content that's collected from the stream
-                    self.send(ChatResponse::Text {
-                        text: remove_tag_with_prefix(&content, "forge_")
-                            .as_str()
-                            .to_string(),
-                        is_complete: true,
-                        is_md: true,
-                        is_summary: false,
-                    })
-                    .await?;
-                }
             }
 
             // Update context in the conversation

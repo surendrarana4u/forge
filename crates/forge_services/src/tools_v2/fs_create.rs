@@ -58,11 +58,9 @@ impl<F: Infrastructure> FsCreateService for ForgeFsCreate<F> {
 
         // record the file content before they're modified
         let old_content = if file_exists {
-            // if file already exists, we should be able to read it.
-            self.0.file_read_service().read_utf8(path).await?
+            Some(self.0.file_read_service().read_utf8(path).await?)
         } else {
-            // if file doesn't exist, we should record it as an empty string.
-            "".to_string()
+            None
         };
 
         // Write file only after validation passes and directories are created
@@ -73,7 +71,7 @@ impl<F: Infrastructure> FsCreateService for ForgeFsCreate<F> {
 
         Ok(FsCreateOutput {
             path: path.display().to_string(),
-            previous: old_content.is_empty().then_some(old_content),
+            previous: old_content,
             warning: syntax_warning.map(|v| v.to_string()),
         })
     }

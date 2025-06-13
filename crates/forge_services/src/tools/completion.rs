@@ -34,7 +34,7 @@ impl ExecutableTool for Completion {
         context.send_summary(input.result.clone()).await?;
 
         // Set the completion flag to true
-        context.set_complete().await;
+        // context.set_complete().await;
 
         // Return success with the message
         Ok(ToolOutput::text(

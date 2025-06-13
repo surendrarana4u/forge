@@ -34,7 +34,7 @@ impl<F: Infrastructure> NamedTool for Followup<F> {
 impl<F: Infrastructure> ExecutableTool for Followup<F> {
     type Input = SelectInput;
 
-    async fn call(&self, context: &mut ToolCallContext, input: Self::Input) -> Result<ToolOutput> {
+    async fn call(&self, _context: &mut ToolCallContext, input: Self::Input) -> Result<ToolOutput> {
         let options = vec![
             input.option1,
             input.option2,
@@ -69,7 +69,7 @@ impl<F: Infrastructure> ExecutableTool for Followup<F> {
         match result {
             Some(answer) => Ok(ToolOutput::text(answer)),
             None => {
-                context.set_complete().await;
+                // context.set_complete().await;
                 Ok(ToolOutput::text(
                     "User interrupted the selection".to_string(),
                 ))

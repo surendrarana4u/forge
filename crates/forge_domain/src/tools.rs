@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+use convert_case::{Case, Casing};
 use derive_more::From;
 use forge_tool_macros::ToolDescription;
 use schemars::schema::RootSchema;
@@ -8,7 +9,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use strum::IntoEnumIterator;
-use strum_macros::{Display, EnumIter};
+use strum_macros::{Display, EnumDiscriminants, EnumIter};
 
 use crate::{ToolCallFull, ToolDefinition, ToolDescription, ToolName};
 
@@ -17,7 +18,20 @@ use crate::{ToolCallFull, ToolDefinition, ToolDescription, ToolName};
 /// This enum contains variants for each type of input that can be passed to
 /// tools in the application. Each variant corresponds to the input type for a
 /// specific tool.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, From, EnumIter, Display, PartialEq)]
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    From,
+    EnumIter,
+    Display,
+    PartialEq,
+    EnumDiscriminants,
+)]
+#[strum_discriminants(derive(Display))]
+#[strum_discriminants(name(ToolCompletion))]
 #[serde(tag = "name", content = "arguments")]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
@@ -470,6 +484,15 @@ impl Tools {
     pub fn contains(tool_name: &ToolName) -> bool {
         FORGE_TOOLS.contains(tool_name)
     }
+    pub fn is_complete(tool_name: &ToolName) -> bool {
+        // Tools that convey that the execution should yield
+        [
+            ToolCompletion::ForgeToolFollowup,
+            ToolCompletion::ForgeToolAttemptCompletion,
+        ]
+        .iter()
+        .any(|v| v.to_string().to_case(Case::Snake).eq(tool_name.as_str()))
+    }
 }
 
 impl TryFrom<ToolCallFull> for Tools {
@@ -506,5 +529,13 @@ mod tests {
         });
 
         pretty_assertions::assert_eq!(actual, expected);
+    }
+    #[test]
+    fn test_is_complete() {
+        let complete_tool = ToolName::new("forge_tool_attempt_completion");
+        let incomplete_tool = ToolName::new("forge_tool_fs_read");
+
+        assert!(Tools::is_complete(&complete_tool));
+        assert!(!Tools::is_complete(&incomplete_tool));
     }
 }

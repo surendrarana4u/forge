@@ -30,6 +30,7 @@ derive-getters = "0.5.0"
 regex.workspace = true
 forge_tool_macros.workspace = true
 lazy_static = "1.5.0"
+convert_case.workspace = true
 
 [dev-dependencies]
 insta = { workspace = true, features = ["yaml"] }
