@@ -2,9 +2,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use forge_domain::{
-    Agent, Attachment, ChatCompletionMessage, CommandOutput, Context, Conversation, ConversationId,
+    Attachment, ChatCompletionMessage, CommandOutput, Context, Conversation, ConversationId,
     Environment, File, McpConfig, Model, ModelId, PatchOperation, ResultStream, Scope, Tool,
-    ToolCallContext, ToolCallFull, ToolDefinition, ToolName, ToolOutput, ToolResult, Workflow,
+    ToolCallFull, ToolDefinition, ToolName, ToolOutput, Workflow,
 };
 use merge::Merge;
 
@@ -90,19 +90,6 @@ pub trait ProviderService: Send + Sync + 'static {
         context: Context,
     ) -> ResultStream<ChatCompletionMessage, anyhow::Error>;
     async fn models(&self) -> anyhow::Result<Vec<Model>>;
-}
-
-#[async_trait::async_trait]
-pub trait ToolService: Send + Sync {
-    // TODO: should take `call` by reference
-    async fn call(
-        &self,
-        agent: &Agent,
-        context: &mut ToolCallContext,
-        call: ToolCallFull,
-    ) -> ToolResult;
-    async fn list(&self) -> anyhow::Result<Vec<ToolDefinition>>;
-    async fn find(&self, name: &ToolName) -> anyhow::Result<Option<Arc<Tool>>>;
 }
 
 #[async_trait::async_trait]
@@ -291,7 +278,6 @@ pub trait ShellService: Send + Sync {
 /// This trait follows clean architecture principles for dependency management
 /// and service/repository composition.
 pub trait Services: Send + Sync + 'static + Clone {
-    type ToolService: ToolService;
     type ProviderService: ProviderService;
     type ConversationService: ConversationService;
     type TemplateService: TemplateService;
@@ -311,7 +297,6 @@ pub trait Services: Send + Sync + 'static + Clone {
     type ShellService: ShellService;
     type McpService: McpService;
 
-    fn tool_service(&self) -> &Self::ToolService;
     fn provider_service(&self) -> &Self::ProviderService;
     fn conversation_service(&self) -> &Self::ConversationService;
     fn template_service(&self) -> &Self::TemplateService;

@@ -8,7 +8,6 @@ use crate::discovery::ForgeDiscoveryService;
 use crate::mcp::{ForgeMcpManager, ForgeMcpService};
 use crate::provider::ForgeProviderService;
 use crate::template::ForgeTemplateService;
-use crate::tool_service::ForgeToolService;
 use crate::tools_v2::{
     ForgeFetch, ForgeFollowup, ForgeFsCreate, ForgeFsPatch, ForgeFsRead, ForgeFsRemove,
     ForgeFsSearch, ForgeFsUndo, ForgeShell,
@@ -28,7 +27,6 @@ type McpService<F> =
 #[derive(Clone)]
 pub struct ForgeServices<F: Infrastructure> {
     infra: Arc<F>,
-    tool_service: Arc<ForgeToolService<McpService<F>>>,
     provider_service: Arc<ForgeProviderService>,
     conversation_service: Arc<ForgeConversationService<McpService<F>>>,
     template_service: Arc<ForgeTemplateService<F>>,
@@ -52,7 +50,6 @@ impl<F: Infrastructure> ForgeServices<F> {
     pub fn new(infra: Arc<F>) -> Self {
         let mcp_manager = Arc::new(ForgeMcpManager::new(infra.clone()));
         let mcp_service = Arc::new(ForgeMcpService::new(mcp_manager.clone(), infra.clone()));
-        let tool_service = Arc::new(ForgeToolService::new(infra.clone(), mcp_service.clone()));
         let template_service = Arc::new(ForgeTemplateService::new(infra.clone()));
         let provider_service = Arc::new(ForgeProviderService::new(infra.clone()));
         let attachment_service = Arc::new(ForgeChatRequest::new(infra.clone()));
@@ -73,7 +70,6 @@ impl<F: Infrastructure> ForgeServices<F> {
         Self {
             infra,
             conversation_service,
-            tool_service,
             attachment_service,
             provider_service,
             template_service,
@@ -95,7 +91,6 @@ impl<F: Infrastructure> ForgeServices<F> {
 }
 
 impl<F: Infrastructure> Services for ForgeServices<F> {
-    type ToolService = ForgeToolService<McpService<F>>;
     type ProviderService = ForgeProviderService;
     type ConversationService = ForgeConversationService<McpService<F>>;
     type TemplateService = ForgeTemplateService<F>;
@@ -114,10 +109,6 @@ impl<F: Infrastructure> Services for ForgeServices<F> {
     type NetFetchService = ForgeFetch;
     type ShellService = ForgeShell<F>;
     type McpService = McpService<F>;
-
-    fn tool_service(&self) -> &Self::ToolService {
-        &self.tool_service
-    }
 
     fn provider_service(&self) -> &Self::ProviderService {
         &self.provider_service
