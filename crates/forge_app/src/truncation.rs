@@ -5,12 +5,6 @@ use forge_domain::Environment;
 use crate::utils::format_match;
 use crate::{FsCreateService, Match, Services};
 
-/// Number of lines to keep at the start of truncated output
-pub(crate) const PREFIX_LINES: usize = 200;
-
-/// Number of lines to keep at the end of truncated output
-pub(crate) const SUFFIX_LINES: usize = 200;
-
 pub async fn create_temp_file<S: Services>(
     services: &S,
     prefix: &str,
@@ -68,91 +62,102 @@ fn clip_by_lines(
     (result_lines, Some((prefix_lines, hidden_lines)))
 }
 
-/// Helper to process a stream and return (formatted_output, is_truncated)
-fn process_stream(
-    content: &str,
-    tag: &str,
-    prefix_lines: usize,
-    suffix_lines: usize,
-) -> (String, bool) {
-    if content.trim().is_empty() {
-        return (String::new(), false);
-    }
+/// Represents formatted output with truncation metadata
+#[derive(Debug)]
+struct FormattedOutput {
+    content: String,
+    prefix_count: usize,
+    suffix_size: usize,
+    hidden_count: usize,
+}
 
+/// Represents the result of processing a stream
+#[derive(Debug)]
+struct ProcessedStream {
+    output: FormattedOutput,
+    is_truncated: bool,
+}
+
+/// Helper to process a stream and return structured output
+fn process_stream(content: &str, prefix_lines: usize, suffix_lines: usize) -> ProcessedStream {
     let (lines, truncation_info) = clip_by_lines(content, prefix_lines, suffix_lines);
     let is_truncated = truncation_info.is_some();
     let total_lines = content.lines().count();
-    let output = tag_output(lines, truncation_info, tag, total_lines);
+    let output = tag_output(lines, truncation_info, total_lines);
 
-    (output, is_truncated)
+    ProcessedStream { output, is_truncated }
 }
 
 /// Helper function to format potentially truncated output for stdout or stderr
 fn tag_output(
     lines: Vec<String>,
     truncation_info: Option<(usize, usize)>,
-    tag: &str,
     total_lines: usize,
-) -> String {
+) -> FormattedOutput {
     match truncation_info {
         Some((prefix_count, hidden_count)) => {
             let suffix_start_line = prefix_count + hidden_count + 1;
-            let _suffix_count = lines.len() - prefix_count;
+            let suffix_size = total_lines - suffix_start_line + 1;
 
-            let mut output = String::new();
+            let mut content = String::new();
 
             // Add prefix lines
-            output.push_str(&format!("<{tag} lines=\"1-{prefix_count}\">\n"));
             for line in lines.iter().take(prefix_count) {
-                output.push_str(line);
-                output.push('\n');
+                content.push_str(line);
+                content.push('\n');
             }
-            output.push_str(&format!("</{tag}>\n"));
 
             // Add truncation marker
-            output.push_str(&format!(
-                "<truncated>...{tag} truncated ({hidden_count} lines not shown)...</truncated>\n"
-            ));
+            content.push_str(&format!("... [{hidden_count} lines omitted] ...\n"));
 
             // Add suffix lines
-            output.push_str(&format!(
-                "<{tag} lines=\"{suffix_start_line}-{total_lines}\">\n"
-            ));
             for line in lines.iter().skip(prefix_count) {
-                output.push_str(line);
-                output.push('\n');
+                content.push_str(line);
+                content.push('\n');
             }
-            output.push_str(&format!("</{tag}>\n"));
 
-            output
+            FormattedOutput { content, prefix_count, suffix_size, hidden_count }
         }
         None => {
             // No truncation, output all lines
-            let mut output = format!("<{tag}>\n");
+            let mut content = String::new();
             for (i, line) in lines.iter().enumerate() {
-                output.push_str(line);
+                content.push_str(line);
                 if i < lines.len() - 1 {
-                    output.push('\n');
+                    content.push('\n');
                 }
             }
-            output.push_str(&format!("\n</{tag}>"));
-            output
+            FormattedOutput {
+                content,
+                prefix_count: total_lines,
+                suffix_size: total_lines,
+                hidden_count: 0,
+            }
         }
     }
 }
 
 /// Truncates shell output and creates a temporary file if needed
-pub fn truncate_shell_output(stdout: &str, stderr: &str) -> TruncatedShellOutput {
-    let (stdout_output, stdout_truncated) =
-        process_stream(stdout, "stdout", PREFIX_LINES, SUFFIX_LINES);
-    let (stderr_output, stderr_truncated) =
-        process_stream(stderr, "stderr", PREFIX_LINES, SUFFIX_LINES);
+pub fn truncate_shell_output(
+    stdout: &str,
+    stderr: &str,
+    prefix_lines: usize,
+    suffix_lines: usize,
+) -> TruncatedShellOutput {
+    let stdout_result = process_stream(stdout, prefix_lines, suffix_lines);
+    let stderr_result = process_stream(stderr, prefix_lines, suffix_lines);
 
     TruncatedShellOutput {
-        stdout: stdout_output,
-        stderr: stderr_output,
-        stdout_truncated,
-        stderr_truncated,
+        stdout: stdout_result.output.content,
+        stderr: stderr_result.output.content,
+        stdout_truncated: stdout_result.is_truncated,
+        stderr_truncated: stderr_result.is_truncated,
+        stdout_prefix_count: stdout_result.output.prefix_count,
+        stdout_suffix_size: stdout_result.output.suffix_size,
+        stdout_hidden_count: stdout_result.output.hidden_count,
+        stderr_prefix_count: stderr_result.output.prefix_count,
+        stderr_hidden_count: stderr_result.output.hidden_count,
+        stderr_suffix_size: stderr_result.output.suffix_size,
     }
 }
 
@@ -162,6 +167,12 @@ pub struct TruncatedShellOutput {
     pub stderr: String,
     pub stdout_truncated: bool,
     pub stderr_truncated: bool,
+    pub stdout_prefix_count: usize,
+    pub stdout_suffix_size: usize,
+    pub stdout_hidden_count: usize,
+    pub stderr_prefix_count: usize,
+    pub stderr_hidden_count: usize,
+    pub stderr_suffix_size: usize,
 }
 
 /// Represents the result of fetch content truncation

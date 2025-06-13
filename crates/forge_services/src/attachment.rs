@@ -115,6 +115,8 @@ pub mod tests {
                 retry_config: Default::default(),
                 max_search_lines: 25,
                 fetch_truncation_limit: 0,
+                stdout_max_prefix_length: 0,
+                stdout_max_suffix_length: 0,
                 max_read_size: 0,
             }
         }

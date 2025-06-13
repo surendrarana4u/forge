@@ -164,61 +164,90 @@ impl ExecutionResult {
                 forge_domain::ToolOutput::text(elm)
             }
             (_, ExecutionResult::Shell(output)) => {
-                let mut elem = Element::new("shell_output").attr("command", &output.output.command);
+                let mut parent_elem = Element::new("shell_output");
+                let mut metadata_elem = Element::new("metadata")
+                    .append(Element::new("command").cdata(&output.output.command))
+                    .append(Element::new("shell").text(&output.shell));
                 if let Some(exit_code) = output.output.exit_code {
-                    elem = elem.attr("exit_code", exit_code);
+                    metadata_elem = metadata_elem.append(Element::new("exit_code").text(exit_code))
                 }
-                let truncated_output =
-                    truncate_shell_output(&output.output.stdout, &output.output.stderr);
+
+                parent_elem = parent_elem.append(metadata_elem);
+
+                let truncated_output = truncate_shell_output(
+                    &output.output.stdout,
+                    &output.output.stderr,
+                    env.stdout_max_prefix_length,
+                    env.stdout_max_suffix_length,
+                );
+                let total_stdout = output.output.stdout.lines().count();
+                let suffix_stdout = truncated_output.stdout_suffix_size;
+
+                let mut stdout_elem = Element::new("stdout")
+                    .append(
+                        Element::new("displayed_lines")
+                            .text(truncated_output.stdout_prefix_count + suffix_stdout),
+                    )
+                    .append(Element::new("total_lines").text(total_stdout))
+                    .append(Element::new("content").cdata(truncated_output.stdout));
+
+                let total_stderr = output.output.stderr.lines().count();
+                let suffix_stderr = truncated_output.stderr_suffix_size;
+                let mut stderr_elem = Element::new("stderr")
+                    .append(
+                        Element::new("displayed_lines")
+                            .text(truncated_output.stderr_prefix_count + suffix_stderr),
+                    )
+                    .append(Element::new("total_lines").text(total_stderr))
+                    .append(Element::new("content").cdata(truncated_output.stderr));
 
                 let stdout_lines = output.output.stdout.lines().count();
                 let stderr_lines = output.output.stderr.lines().count();
 
-                if truncated_output.stdout_truncated {
-                    elem = elem.attr("total_stdout_lines", stdout_lines);
-                }
+                if let Some(path) = (truncated_output.stdout_truncated
+                    || truncated_output.stderr_truncated)
+                    .then(|| truncation_path.as_ref().map(|p| p.display().to_string()))
+                    .flatten()
+                {
+                    let mut full_content_file = Element::new("full_content_file")
+                        .append(Element::new("total_lines").text(stdout_lines + stderr_lines))
+                        .append(Element::new("path").text(path));
 
-                if truncated_output.stderr_truncated {
-                    elem = elem.attr("total_stderr_lines", stderr_lines);
-                }
-
-                let is_success = output.output.success();
-
-                // Combine outputs
-                let mut outputs = vec![];
-                if !output.output.stdout.is_empty() {
-                    outputs.push(truncated_output.stdout);
-                }
-                if !output.output.stderr.is_empty() {
-                    outputs.push(truncated_output.stderr);
-                }
-
-                if truncated_output.stderr_truncated || truncated_output.stdout_truncated {
-                    // Create temp file if needed
-                    if let Some(path) = truncation_path.as_ref() {
-                        elem = elem
-                            .attr("temp_file", path.display())
-                            .attr("truncated", "true");
+                    if truncated_output.stdout_truncated {
+                        full_content_file = full_content_file.append(
+                            Element::new("stdout_line_range")
+                                .attr("start", 2)
+                                .attr("end", stdout_lines + 1),
+                        );
+                        stdout_elem = stdout_elem.append(create_truncation_info(
+                            truncated_output.stdout_prefix_count,
+                            suffix_stdout,
+                            truncated_output.stdout_hidden_count,
+                        ));
                     }
-                }
-                if outputs.is_empty() {
-                    elem = elem.text(format!(
-                        "Command {} with no output.",
-                        if is_success {
-                            "executed successfully"
-                        } else {
-                            "failed"
-                        }
-                    ));
-                } else {
-                    elem = elem.cdata(outputs.join("\n"));
-                };
 
-                if is_success {
-                    forge_domain::ToolOutput::text(elem)
-                } else {
-                    panic!("{}", elem)
+                    if truncated_output.stderr_truncated {
+                        let start = stdout_lines + 2;
+                        let end = stdout_lines + stderr_lines + 2;
+                        full_content_file = full_content_file.append(
+                            Element::new("stderr_line_range")
+                                .attr("start", start)
+                                .attr("end", end),
+                        );
+                        stderr_elem = stderr_elem.append(create_truncation_info(
+                            truncated_output.stderr_prefix_count,
+                            suffix_stderr,
+                            truncated_output.stderr_hidden_count,
+                        ));
+                    }
+
+                    parent_elem = parent_elem.append(full_content_file);
                 }
+
+                parent_elem = parent_elem.append(stdout_elem);
+                parent_elem = parent_elem.append(stderr_elem);
+
+                forge_domain::ToolOutput::text(parent_elem)
             }
             (_, ExecutionResult::FollowUp(output)) => match output {
                 None => {
@@ -272,12 +301,13 @@ impl ExecutionResult {
                 }
             }
             ExecutionResult::Shell(output) => {
+                let env = services.environment_service().get_environment();
                 let stdout_lines = output.output.stdout.lines().count();
                 let stderr_lines = output.output.stderr.lines().count();
-                let stdout_truncated = stdout_lines
-                    > crate::truncation::PREFIX_LINES + crate::truncation::SUFFIX_LINES;
-                let stderr_truncated = stderr_lines
-                    > crate::truncation::PREFIX_LINES + crate::truncation::SUFFIX_LINES;
+                let stdout_truncated =
+                    stdout_lines > env.stdout_max_prefix_length + env.stdout_max_suffix_length;
+                let stderr_truncated =
+                    stderr_lines > env.stdout_max_prefix_length + env.stdout_max_suffix_length;
 
                 if stdout_truncated || stderr_truncated {
                     let path = create_temp_file(
@@ -300,6 +330,17 @@ impl ExecutionResult {
             ExecutionResult::AttemptCompletion => Ok(None),
         }
     }
+}
+
+fn create_truncation_info(
+    prefix_count: usize,
+    suffix_count: usize,
+    hidden_count: usize,
+) -> Element {
+    Element::new("truncation_info")
+        .append(Element::new("head_lines").text(prefix_count))
+        .append(Element::new("tail_lines").text(suffix_count))
+        .append(Element::new("omitted_lines").text(hidden_count))
 }
 
 #[cfg(test)]
@@ -334,6 +375,8 @@ mod tests {
             max_search_lines: 25,
             fetch_truncation_limit: 55,
             max_read_size: 10,
+            stdout_max_prefix_length: 10,
+            stdout_max_suffix_length: 10,
         }
     }
 
@@ -487,6 +530,259 @@ mod tests {
 
         let env = fixture_environment();
         let actual = fixture.into_tool_output(input, None, &env);
+
+        insta::assert_snapshot!(to_value(actual));
+    }
+
+    #[test]
+    fn test_shell_output_no_truncation() {
+        let fixture = ExecutionResult::Shell(ShellOutput {
+            output: forge_domain::CommandOutput {
+                command: "echo hello".to_string(),
+                stdout: "hello\nworld".to_string(),
+                stderr: "".to_string(),
+                exit_code: Some(0),
+            },
+            shell: "/bin/bash".to_string(),
+        });
+
+        let input = Tools::ForgeToolProcessShell(forge_domain::Shell {
+            command: "echo hello".to_string(),
+            cwd: "/home/user".into(),
+            explanation: Some("Test shell command".to_string()),
+            keep_ansi: false,
+        });
+
+        let env = fixture_environment();
+        let actual = fixture.into_tool_output(input, None, &env);
+
+        insta::assert_snapshot!(to_value(actual));
+    }
+
+    #[test]
+    fn test_shell_output_stdout_truncation_only() {
+        // Create stdout with more lines than the truncation limit
+        let mut stdout_lines = Vec::new();
+        for i in 1..=25 {
+            stdout_lines.push(format!("stdout line {}", i));
+        }
+        let stdout = stdout_lines.join("\n");
+
+        let fixture = ExecutionResult::Shell(ShellOutput {
+            output: forge_domain::CommandOutput {
+                command: "long_command".to_string(),
+                stdout,
+                stderr: "".to_string(),
+                exit_code: Some(0),
+            },
+            shell: "/bin/bash".to_string(),
+        });
+
+        let input = Tools::ForgeToolProcessShell(forge_domain::Shell {
+            command: "long_command".to_string(),
+            cwd: "/home/user".into(),
+            explanation: Some("Test shell command with stdout truncation".to_string()),
+            keep_ansi: false,
+        });
+
+        let env = fixture_environment();
+        let truncation_path = Some(PathBuf::from("/tmp/shell_output.md"));
+        let actual = fixture.into_tool_output(input, truncation_path, &env);
+
+        insta::assert_snapshot!(to_value(actual));
+    }
+
+    #[test]
+    fn test_shell_output_stderr_truncation_only() {
+        // Create stderr with more lines than the truncation limit
+        let mut stderr_lines = Vec::new();
+        for i in 1..=25 {
+            stderr_lines.push(format!("stderr line {}", i));
+        }
+        let stderr = stderr_lines.join("\n");
+
+        let fixture = ExecutionResult::Shell(ShellOutput {
+            output: forge_domain::CommandOutput {
+                command: "error_command".to_string(),
+                stdout: "".to_string(),
+                stderr,
+                exit_code: Some(1),
+            },
+            shell: "/bin/bash".to_string(),
+        });
+
+        let input = Tools::ForgeToolProcessShell(forge_domain::Shell {
+            command: "error_command".to_string(),
+            cwd: "/home/user".into(),
+            explanation: Some("Test shell command with stderr truncation".to_string()),
+            keep_ansi: false,
+        });
+
+        let env = fixture_environment();
+        let truncation_path = Some(PathBuf::from("/tmp/shell_output.md"));
+        let actual = fixture.into_tool_output(input, truncation_path, &env);
+
+        insta::assert_snapshot!(to_value(actual));
+    }
+
+    #[test]
+    fn test_shell_output_both_stdout_stderr_truncation() {
+        // Create both stdout and stderr with more lines than the truncation limit
+        let mut stdout_lines = Vec::new();
+        for i in 1..=25 {
+            stdout_lines.push(format!("stdout line {}", i));
+        }
+        let stdout = stdout_lines.join("\n");
+
+        let mut stderr_lines = Vec::new();
+        for i in 1..=30 {
+            stderr_lines.push(format!("stderr line {}", i));
+        }
+        let stderr = stderr_lines.join("\n");
+
+        let fixture = ExecutionResult::Shell(ShellOutput {
+            output: forge_domain::CommandOutput {
+                command: "complex_command".to_string(),
+                stdout,
+                stderr,
+                exit_code: Some(0),
+            },
+            shell: "/bin/bash".to_string(),
+        });
+
+        let input = Tools::ForgeToolProcessShell(forge_domain::Shell {
+            command: "complex_command".to_string(),
+            cwd: "/home/user".into(),
+            explanation: Some(
+                "Test shell command with both stdout and stderr truncation".to_string(),
+            ),
+            keep_ansi: false,
+        });
+
+        let env = fixture_environment();
+        let truncation_path = Some(PathBuf::from("/tmp/shell_output.md"));
+        let actual = fixture.into_tool_output(input, truncation_path, &env);
+
+        insta::assert_snapshot!(to_value(actual));
+    }
+
+    #[test]
+    fn test_shell_output_exact_boundary_stdout() {
+        // Create stdout with exactly the truncation limit (prefix + suffix = 20 lines)
+        let mut stdout_lines = Vec::new();
+        for i in 1..=20 {
+            stdout_lines.push(format!("stdout line {}", i));
+        }
+        let stdout = stdout_lines.join("\n");
+
+        let fixture = ExecutionResult::Shell(ShellOutput {
+            output: forge_domain::CommandOutput {
+                command: "boundary_command".to_string(),
+                stdout,
+                stderr: "".to_string(),
+                exit_code: Some(0),
+            },
+            shell: "/bin/bash".to_string(),
+        });
+
+        let input = Tools::ForgeToolProcessShell(forge_domain::Shell {
+            command: "boundary_command".to_string(),
+            cwd: "/home/user".into(),
+            explanation: Some("Test shell command at exact boundary".to_string()),
+            keep_ansi: false,
+        });
+
+        let env = fixture_environment();
+        let actual = fixture.into_tool_output(input, None, &env);
+
+        insta::assert_snapshot!(to_value(actual));
+    }
+
+    #[test]
+    fn test_shell_output_single_line_each() {
+        let fixture = ExecutionResult::Shell(ShellOutput {
+            output: forge_domain::CommandOutput {
+                command: "simple_command".to_string(),
+                stdout: "single stdout line".to_string(),
+                stderr: "single stderr line".to_string(),
+                exit_code: Some(0),
+            },
+            shell: "/bin/bash".to_string(),
+        });
+
+        let input = Tools::ForgeToolProcessShell(forge_domain::Shell {
+            command: "simple_command".to_string(),
+            cwd: "/home/user".into(),
+            explanation: Some("Test shell command with single lines".to_string()),
+            keep_ansi: false,
+        });
+
+        let env = fixture_environment();
+        let actual = fixture.into_tool_output(input, None, &env);
+
+        insta::assert_snapshot!(to_value(actual));
+    }
+
+    #[test]
+    fn test_shell_output_empty_streams() {
+        let fixture = ExecutionResult::Shell(ShellOutput {
+            output: forge_domain::CommandOutput {
+                command: "silent_command".to_string(),
+                stdout: "".to_string(),
+                stderr: "".to_string(),
+                exit_code: Some(0),
+            },
+            shell: "/bin/bash".to_string(),
+        });
+
+        let input = Tools::ForgeToolProcessShell(forge_domain::Shell {
+            command: "silent_command".to_string(),
+            cwd: "/home/user".into(),
+            explanation: Some("Test shell command with empty output".to_string()),
+            keep_ansi: false,
+        });
+
+        let env = fixture_environment();
+        let actual = fixture.into_tool_output(input, None, &env);
+
+        insta::assert_snapshot!(to_value(actual));
+    }
+
+    #[test]
+    fn test_shell_output_line_number_calculation() {
+        // Test specific line number calculations for 1-based indexing
+        let mut stdout_lines = Vec::new();
+        for i in 1..=15 {
+            stdout_lines.push(format!("stdout {}", i));
+        }
+        let stdout = stdout_lines.join("\n");
+
+        let mut stderr_lines = Vec::new();
+        for i in 1..=12 {
+            stderr_lines.push(format!("stderr {}", i));
+        }
+        let stderr = stderr_lines.join("\n");
+
+        let fixture = ExecutionResult::Shell(ShellOutput {
+            output: forge_domain::CommandOutput {
+                command: "line_test_command".to_string(),
+                stdout,
+                stderr,
+                exit_code: Some(0),
+            },
+            shell: "/bin/bash".to_string(),
+        });
+
+        let input = Tools::ForgeToolProcessShell(forge_domain::Shell {
+            command: "line_test_command".to_string(),
+            cwd: "/home/user".into(),
+            explanation: Some("Test line number calculation".to_string()),
+            keep_ansi: false,
+        });
+
+        let env = fixture_environment();
+        let truncation_path = Some(PathBuf::from("/tmp/shell_output.md"));
+        let actual = fixture.into_tool_output(input, truncation_path, &env);
 
         insta::assert_snapshot!(to_value(actual));
     }
