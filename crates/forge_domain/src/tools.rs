@@ -48,6 +48,21 @@ pub enum Tools {
     ForgeToolAttemptCompletion(AttemptCompletion),
 }
 
+/// Input structure for agent tool calls. This serves as the generic schema
+/// for dynamically registered agent tools, allowing users to specify tasks
+/// for specific agents.
+#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct AgentInput {
+    /// A clear and detailed description of the task to be performed by the
+    /// agent. Provide sufficient context and specific requirements to
+    /// enable the agent to understand and execute the work accurately.
+    pub task: String,
+    /// One sentence explanation as to why this tool is being used, and how it
+    /// contributes to the goal.
+    #[serde(default)]
+    pub explanation: Option<String>,
+}
+
 /// Reads file contents from the specified absolute path. Ideal for analyzing
 /// code, configuration files, documentation, or textual data. Automatically
 /// extracts text from PDF and DOCX files, preserving the original formatting.

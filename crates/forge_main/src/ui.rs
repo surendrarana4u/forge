@@ -388,15 +388,14 @@ impl<F: API> UI<F> {
                     .agents
                     .into_iter()
                     .map(|agent| {
-                        if let Some(title) = &agent.title {
+                        let title = &agent.title.unwrap_or("<Missing agent.title>".to_string());
+                        {
                             let label = format!(
                                 "{:<n$} {}",
                                 agent.id.as_str().to_case(Case::UpperSnake).bold(),
                                 title.lines().collect::<Vec<_>>().join(" ").dimmed()
                             );
-                            Agent { label, id: agent.id }
-                        } else {
-                            Agent { id: agent.id, label: "<Missing agent title>".to_string() }
+                            Agent { label, id: agent.id.clone() }
                         }
                     })
                     .collect::<Vec<_>>();

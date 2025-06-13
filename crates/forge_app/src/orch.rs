@@ -337,15 +337,16 @@ impl<S: AgentService> Orchestrator<S> {
                 debug!(agent_id = %agent.id, "Compaction not needed");
             }
 
-            let empty_tool_calls = tool_calls.is_empty();
+            let has_no_tool_calls = tool_calls.is_empty();
 
             debug!(agent_id = %agent.id, tool_call_count = tool_calls.len(), "Tool call count");
 
             is_complete = tool_calls.iter().any(|call| Tools::is_complete(&call.name));
 
-            if !is_complete {
+            if !is_complete && !has_no_tool_calls {
                 // If task is completed we would have already displayed a message so we can
                 // ignore the content that's collected from the stream
+                // NOTE: Important to send the content messages before the tool call happens
                 self.send(ChatResponse::Text {
                     text: remove_tag_with_prefix(&content, "forge_")
                         .as_str()
@@ -366,7 +367,7 @@ impl<S: AgentService> Orchestrator<S> {
 
             context = SetModel::new(model_id.clone()).transform(context);
 
-            if empty_tool_calls {
+            if has_no_tool_calls {
                 // No tool calls present, which doesn't mean task is complete so reprompt the
                 // agent to ensure the task complete.
                 let content = self

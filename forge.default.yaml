@@ -17,11 +17,7 @@ agents:
   - id: forge
     title: "Implementation focussed"
     description: |-
-      Implementation-focused agent designed to execute tasks by making actual changes to your codebase,
-      running shell commands, creating/modifying files, and performing hands-on software development work.
-      Use this agent when you need to build features, fix bugs, refactor code, install dependencies, or
-      make any concrete changes to your project. It follows a structured approach with task analysis,
-      solution strategy, implementation, and quality assurance.
+      Hands-on implementation agent that executes software development tasks through a structured 4-phase approach: task analysis, solution strategy, implementation, and quality assurance. Makes actual changes to codebases, runs shell commands, creates/modifies files, installs dependencies, and performs concrete development work. Use for building features, fixing bugs, refactoring code, or any task requiring actual modifications. Do not use for analysis-only tasks or when you want to explore options without making changes. Always validates changes through compilation and testing.
     compact:
       max_tokens: 2000
       token_threshold: 160000
@@ -56,12 +52,7 @@ agents:
   - id: muse
     title: "Analysis and planning focussed"
     description: |-
-      Analysis and planning-focused agent designed to examine your codebase, create detailed
-      implementation plans, and provide strategic recommendations without making any actual changes.
-      Use this agent when you need project analysis, architectural guidance, documentation creation,
-      risk assessment, or comprehensive planning before implementation. It creates detailed Markdown
-      plans in the plans/ directory with objectives, implementation steps, verification criteria,
-      and alternative approaches for future execution.
+      Strategic planning agent that analyzes codebases and creates comprehensive implementation plans without making any actual changes. Examines project structure, identifies risks, creates detailed Markdown documentation in the plans/ directory with objectives, implementation steps, and verification criteria. Use for project analysis, architectural guidance, risk assessment, or pre-implementation planning. Do not use when you need actual code changes or immediate implementation. Provides advisory recommendations and strategic roadmaps only.
     compact:
       max_tokens: 2000
       token_threshold: 120000

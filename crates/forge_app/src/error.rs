@@ -18,4 +18,7 @@ pub enum Error {
         name: ToolName,
         supported_tools: String,
     },
+
+    #[error("Empty tool response")]
+    EmptyToolResponse,
 }

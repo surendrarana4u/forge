@@ -6,6 +6,7 @@ use forge_domain::{
     Environment, File, McpConfig, Model, ModelId, PatchOperation, ResultStream, Scope, Tool,
     ToolCallContext, ToolCallFull, ToolDefinition, ToolName, ToolOutput, ToolResult, Workflow,
 };
+use merge::Merge;
 
 #[derive(Debug)]
 pub struct ShellOutput {
@@ -166,6 +167,15 @@ pub trait WorkflowService {
     /// directory or its parent directories.
     async fn read(&self, path: Option<&Path>) -> anyhow::Result<Workflow>;
 
+    /// Reads the workflow from the given path and merges it with an default
+    /// workflow.
+    async fn read_merged(&self, path: Option<&Path>) -> anyhow::Result<Workflow> {
+        let workflow = self.read(path).await?;
+        let mut base_workflow = Workflow::default();
+        base_workflow.merge(workflow);
+        Ok(base_workflow)
+    }
+
     /// Writes the given workflow to the specified path.
     /// If no path is provided, it will try to find forge.yaml in the current
     /// directory or its parent directories.
@@ -287,7 +297,7 @@ pub trait Services: Send + Sync + 'static + Clone {
     type TemplateService: TemplateService;
     type AttachmentService: AttachmentService;
     type EnvironmentService: EnvironmentService;
-    type WorkflowService: WorkflowService;
+    type WorkflowService: WorkflowService + Sync;
     type FileDiscoveryService: FileDiscoveryService;
     type McpConfigManager: McpConfigManager;
     type FsCreateService: FsCreateService;
