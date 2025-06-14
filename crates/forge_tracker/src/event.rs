@@ -45,10 +45,29 @@ impl From<Name> for String {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolCallPayload {
+    tool_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cause: Option<String>,
+}
+
+impl ToolCallPayload {
+    pub fn new(tool_name: String) -> Self {
+        Self { tool_name, cause: None }
+    }
+
+    pub fn with_cause(mut self, cause: String) -> Self {
+        self.cause = Some(cause);
+        self
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum EventKind {
     Start,
     Ping,
+    ToolCall(ToolCallPayload),
     Prompt(String),
     Error(String),
     Trace(Vec<u8>),
@@ -61,6 +80,7 @@ impl EventKind {
             Self::Ping => Name::from("ping".to_string()),
             Self::Prompt(_) => Name::from("prompt".to_string()),
             Self::Error(_) => Name::from("error".to_string()),
+            Self::ToolCall(_) => Name::from("tool_call".to_string()),
             Self::Trace(_) => Name::from("trace".to_string()),
         }
     }
@@ -70,6 +90,7 @@ impl EventKind {
             Self::Ping => "".to_string(),
             Self::Prompt(content) => content.to_string(),
             Self::Error(content) => content.to_string(),
+            Self::ToolCall(payload) => serde_json::to_string(&payload).unwrap_or_default(),
             Self::Trace(trace) => String::from_utf8_lossy(trace).to_string(),
         }
     }

@@ -13,6 +13,7 @@ use forge_display::{MarkdownFormat, TitleFormat};
 use forge_domain::{McpConfig, McpServerConfig, Scope};
 use forge_fs::ForgeFS;
 use forge_spinner::SpinnerManager;
+use forge_tracker::ToolCallPayload;
 use inquire::error::InquireError;
 use inquire::ui::{RenderConfig, Styled};
 use inquire::Select;
@@ -656,6 +657,27 @@ impl<F: API> UI<F> {
                     }
 
                     self.writeln(text)?;
+                }
+            }
+            ChatResponse::ToolCallStart(_) => {
+                self.spinner.stop(None)?;
+            }
+            ChatResponse::ToolCallEnd(toolcall_result) => {
+                // Only track toolcall name in case of success else track the error.
+                let payload = if toolcall_result.is_error() {
+                    let mut r = ToolCallPayload::new(toolcall_result.name.to_string());
+                    if let Some(cause) = toolcall_result.output.as_str() {
+                        r = r.with_cause(cause.to_string());
+                    }
+                    r
+                } else {
+                    ToolCallPayload::new(toolcall_result.name.to_string())
+                };
+                tokio::spawn(TRACKER.dispatch(forge_tracker::EventKind::ToolCall(payload)));
+
+                self.spinner.start(None)?;
+                if !self.cli.verbose {
+                    return Ok(());
                 }
             }
             ChatResponse::Usage(mut usage) => {
