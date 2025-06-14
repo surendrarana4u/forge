@@ -2,224 +2,34 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use convert_case::{Case, Casing};
-use forge_display::TitleFormat;
 use forge_domain::{
-    Agent, AgentInput, ChatRequest, ChatResponse, Event, ToolCallContext, ToolCallFull,
-    ToolDefinition, ToolName, ToolOutput, ToolResult, Tools,
+    Agent, AgentInput, ToolCallContext, ToolCallFull, ToolDefinition, ToolName, ToolOutput,
+    ToolResult, Tools,
 };
-use futures::StreamExt;
 use strum::IntoEnumIterator;
-use tokio::sync::RwLock;
 use tokio::time::timeout;
 
+use crate::agent_executor::AgentExecutor;
 use crate::error::Error;
-use crate::execution_result::ExecutionResult;
-use crate::input_title::InputTitle;
-use crate::{
-    ConversationService, EnvironmentService, FollowUpService, FsCreateService, FsPatchService,
-    FsReadService, FsRemoveService, FsSearchService, FsUndoService, McpService, NetFetchService,
-    Services, ShellService, WorkflowService,
-};
+use crate::mcp_executor::McpExecutor;
+use crate::tool_executor::ToolExecutor;
+use crate::{McpService, Services};
 
 const TOOL_CALL_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub struct ToolRegistry<S> {
-    services: Arc<S>,
-    tool_agents: Arc<RwLock<Option<Vec<ToolDefinition>>>>,
+    tool_executor: ToolExecutor<S>,
+    agent_executor: AgentExecutor<S>,
+    mcp_executor: McpExecutor<S>,
 }
 
 impl<S: Services> ToolRegistry<S> {
     pub fn new(services: Arc<S>) -> Self {
-        Self { services, tool_agents: Arc::new(RwLock::new(None)) }
-    }
-
-    /// Returns a list of tool definitions for all available agents.
-    async fn tool_agents(&self) -> anyhow::Result<Vec<ToolDefinition>> {
-        if let Some(tool_agents) = self.tool_agents.read().await.clone() {
-            return Ok(tool_agents);
+        Self {
+            tool_executor: ToolExecutor::new(services.clone()),
+            agent_executor: AgentExecutor::new(services.clone()),
+            mcp_executor: McpExecutor::new(services),
         }
-        let workflow = self.services.workflow_service().read_merged(None).await?;
-
-        let agents: Vec<ToolDefinition> = workflow.agents.into_iter().map(Into::into).collect();
-        *self.tool_agents.write().await = Some(agents.clone());
-        Ok(agents)
-    }
-
-    /// Executes an agent tool call by creating a new chat request for the
-    /// specified agent.
-    async fn call_agent_tool(
-        &self,
-        agent_id: String,
-        task: String,
-        context: &mut ToolCallContext,
-    ) -> anyhow::Result<ToolOutput> {
-        context
-            .send_text(
-                TitleFormat::debug(format!(
-                    "{} (Agent)",
-                    agent_id.as_str().to_case(Case::UpperSnake)
-                ))
-                .sub_title(task.as_str()),
-            )
-            .await?;
-
-        // Create a new conversation for agent execution
-        let workflow = self.services.workflow_service().read_merged(None).await?;
-        let conversation = self
-            .services
-            .conversation_service()
-            .create(workflow)
-            .await?;
-
-        // Execute the request through the ForgeApp
-        let app = crate::ForgeApp::new(self.services.clone());
-        let mut response_stream = app
-            .chat(ChatRequest::new(
-                Event::new(format!("{agent_id}/user_task_init"), task),
-                conversation.id,
-            ))
-            .await?;
-
-        // Collect responses from the agent
-        while let Some(message) = response_stream.next().await {
-            let message = message?;
-            match &message {
-                ChatResponse::Text { text, is_summary, .. } if *is_summary => {
-                    return Ok(ToolOutput::text(text));
-                }
-                _ => {
-                    context.send(message).await?;
-                }
-            }
-        }
-        Err(Error::EmptyToolResponse.into())
-    }
-
-    async fn call_internal(&self, input: Tools) -> anyhow::Result<ExecutionResult> {
-        match input {
-            Tools::ForgeToolFsRead(input) => {
-                let output = self
-                    .services
-                    .fs_read_service()
-                    .read(input.path.clone(), input.start_line, input.end_line)
-                    .await?;
-
-                Ok(output.into())
-            }
-            Tools::ForgeToolFsCreate(input) => {
-                let out = self
-                    .services
-                    .fs_create_service()
-                    .create(input.path.clone(), input.content, input.overwrite, true)
-                    .await?;
-
-                Ok((out).into())
-            }
-            Tools::ForgeToolFsSearch(input) => {
-                let output = self
-                    .services
-                    .fs_search_service()
-                    .search(
-                        input.path.clone(),
-                        input.regex.clone(),
-                        input.file_pattern.clone(),
-                    )
-                    .await?;
-
-                Ok((output).into())
-            }
-            Tools::ForgeToolFsRemove(input) => {
-                let output = self
-                    .services
-                    .fs_remove_service()
-                    .remove(input.path.clone())
-                    .await?;
-
-                Ok((output).into())
-            }
-            Tools::ForgeToolFsPatch(input) => {
-                let output = self
-                    .services
-                    .fs_patch_service()
-                    .patch(
-                        input.path.clone(),
-                        input.search,
-                        input.operation,
-                        input.content,
-                    )
-                    .await?;
-
-                Ok((output).into())
-            }
-            Tools::ForgeToolFsUndo(input) => {
-                let output = self.services.fs_undo_service().undo(input.path).await?;
-
-                Ok((output).into())
-            }
-            Tools::ForgeToolProcessShell(input) => {
-                let output = self
-                    .services
-                    .shell_service()
-                    .execute(input.command, input.cwd, input.keep_ansi)
-                    .await?;
-
-                Ok((output).into())
-            }
-            Tools::ForgeToolNetFetch(input) => {
-                let output = self
-                    .services
-                    .net_fetch_service()
-                    .fetch(input.url.clone(), input.raw)
-                    .await?;
-
-                Ok((output).into())
-            }
-            Tools::ForgeToolFollowup(input) => {
-                let output = self
-                    .services
-                    .follow_up_service()
-                    .follow_up(
-                        input.question,
-                        input
-                            .option1
-                            .into_iter()
-                            .chain(input.option2.into_iter())
-                            .chain(input.option3.into_iter())
-                            .chain(input.option4.into_iter())
-                            .chain(input.option5.into_iter())
-                            .collect(),
-                        input.multiple,
-                    )
-                    .await?;
-
-                Ok((output).into())
-            }
-            Tools::ForgeToolAttemptCompletion(_input) => {
-                Ok(crate::execution_result::ExecutionResult::AttemptCompletion)
-            }
-        }
-    }
-    async fn call_forge_tool(
-        &self,
-        input: ToolCallFull,
-        context: &mut ToolCallContext,
-    ) -> anyhow::Result<ToolOutput> {
-        let tool_input = Tools::try_from(input).map_err(Error::CallArgument)?;
-        let env = self.services.environment_service().get_environment();
-        let title = tool_input.to_title(&env);
-        // Send tool call information
-        context.send_text(title).await?;
-        let execution_result = self.call_internal(tool_input.clone()).await;
-        if let Err(ref e) = execution_result {
-            // Send failure message
-            context.send_text(TitleFormat::error(e.to_string())).await?;
-        }
-        let execution_result = execution_result?;
-        let truncation_path = execution_result
-            .to_create_temp(self.services.as_ref())
-            .await?;
-        Ok(execution_result.into_tool_output(tool_input, truncation_path, &env))
     }
 
     async fn call_with_timeout<F, Fut>(
@@ -246,35 +56,26 @@ impl<S: Services> ToolRegistry<S> {
         context: &mut ToolCallContext,
     ) -> anyhow::Result<ToolOutput> {
         Self::validate_tool_call(agent, &input.name).await?;
-        let agent_tools = self.tool_agents().await?;
 
         tracing::info!(tool_name = %input.name, arguments = %input.arguments, "Executing tool call");
         let tool_name = input.name.clone();
 
         // First, try to call a Forge tool
         if Tools::contains(&input.name) {
-            self.call_with_timeout(&tool_name, || self.call_forge_tool(input.clone(), context))
-                .await
-        } else if agent_tools.iter().any(|tool| tool.name == input.name) {
+            self.call_with_timeout(&tool_name, || {
+                self.tool_executor.execute(input.clone(), context)
+            })
+            .await
+        } else if self.agent_executor.contains_tool(&input.name).await? {
             // Handle agent delegation tool calls
             let agent_input: AgentInput =
                 serde_json::from_value(input.arguments).context("Failed to parse agent input")?;
             // NOTE: Agents should not timeout
-            self.call_agent_tool(input.name.to_string(), agent_input.task, context)
+            self.agent_executor
+                .execute(input.name.to_string(), agent_input.task, context)
                 .await
-        } else if self
-            .services
-            .mcp_service()
-            .list()
-            .await?
-            .iter()
-            .any(|tool| tool.name == input.name)
-        {
-            context
-                .send_text(TitleFormat::info("MCP").sub_title(input.name.as_str()))
-                .await?;
-
-            self.call_with_timeout(&tool_name, || self.services.mcp_service().call(input))
+        } else if self.mcp_executor.contains_tool(&input.name).await? {
+            self.call_with_timeout(&tool_name, || self.mcp_executor.execute(input, context))
                 .await
         } else {
             Err(Error::NotFound(input.name).into())
@@ -296,8 +97,8 @@ impl<S: Services> ToolRegistry<S> {
     }
 
     pub async fn list(&self) -> anyhow::Result<Vec<ToolDefinition>> {
-        let mcp_tools = self.services.mcp_service().list().await?;
-        let agent_tools = self.tool_agents().await?;
+        let mcp_tools = self.mcp_executor.services.mcp_service().list().await?;
+        let agent_tools = self.agent_executor.tool_agents().await?;
 
         let tools = Tools::iter()
             .map(|tool| tool.definition())

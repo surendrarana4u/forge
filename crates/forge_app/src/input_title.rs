@@ -5,36 +5,47 @@ use forge_domain::{Environment, Tools};
 
 use crate::utils::display_path;
 
+pub enum Content {
+    Title(TitleFormat),
+    Summary(String),
+}
+
+impl From<TitleFormat> for Content {
+    fn from(title: TitleFormat) -> Self {
+        Content::Title(title)
+    }
+}
+
 pub trait InputTitle {
-    fn to_title(&self, env: &Environment) -> TitleFormat;
+    fn to_content(&self, env: &Environment) -> Content;
 }
 
 impl InputTitle for Tools {
-    fn to_title(&self, env: &Environment) -> TitleFormat {
+    fn to_content(&self, env: &Environment) -> Content {
+        let display_path_for = |path: &str| display_path(env, Path::new(path));
+
         match self {
             Tools::ForgeToolFsRead(input) => {
-                let display_path = display_path(env, Path::new(&input.path));
+                let display_path = display_path_for(&input.path);
                 let is_explicit_range = input.start_line.is_some() || input.end_line.is_some();
-
                 let title = if is_explicit_range {
                     "Read (Range)"
                 } else {
                     "Read"
                 };
-
-                TitleFormat::debug(title).sub_title(display_path)
+                TitleFormat::debug(title).sub_title(display_path).into()
             }
             Tools::ForgeToolFsCreate(input) => {
-                let display_path = display_path(env, Path::new(&input.path));
+                let display_path = display_path_for(&input.path);
                 let title = if input.overwrite {
                     "Overwrite"
                 } else {
                     "Create"
                 };
-                TitleFormat::debug(title).sub_title(display_path)
+                TitleFormat::debug(title).sub_title(display_path).into()
             }
             Tools::ForgeToolFsSearch(input) => {
-                let formatted_dir = display_path(env, Path::new(&input.path));
+                let formatted_dir = display_path_for(&input.path);
                 let title = match (&input.regex, &input.file_pattern) {
                     (Some(regex), Some(pattern)) => {
                         format!("Search for '{regex}' in '{pattern}' files at {formatted_dir}")
@@ -43,33 +54,36 @@ impl InputTitle for Tools {
                     (None, Some(pattern)) => format!("Search for '{pattern}' at {formatted_dir}"),
                     (None, None) => format!("Search at {formatted_dir}"),
                 };
-                TitleFormat::debug(title)
+                TitleFormat::debug(title).into()
             }
             Tools::ForgeToolFsRemove(input) => {
-                let display_path = display_path(env, Path::new(&input.path));
-                TitleFormat::debug("Remove").sub_title(display_path)
+                let display_path = display_path_for(&input.path);
+                TitleFormat::debug("Remove").sub_title(display_path).into()
             }
             Tools::ForgeToolFsPatch(input) => {
-                let display_path = display_path(env, Path::new(&input.path));
-                TitleFormat::debug("Patch").sub_title(display_path)
+                let display_path = display_path_for(&input.path);
+                TitleFormat::debug("Patch").sub_title(display_path).into()
             }
             Tools::ForgeToolFsUndo(input) => {
-                let display_path = display_path(env, Path::new(&input.path));
-                TitleFormat::debug("Undo").sub_title(display_path)
+                let display_path = display_path_for(&input.path);
+                TitleFormat::debug("Undo").sub_title(display_path).into()
             }
             Tools::ForgeToolProcessShell(input) => {
-                TitleFormat::debug(format!("Execute [{}]", env.shell)).sub_title(&input.command)
+                TitleFormat::debug(format!("Execute [{}]", env.shell))
+                    .sub_title(&input.command)
+                    .into()
             }
-            Tools::ForgeToolNetFetch(input) => TitleFormat::debug("GET").sub_title(&input.url),
-            Tools::ForgeToolFollowup(input) => {
-                TitleFormat::debug("Follow-up").sub_title(&input.question)
+            Tools::ForgeToolNetFetch(input) => {
+                TitleFormat::debug("GET").sub_title(&input.url).into()
             }
-            Tools::ForgeToolAttemptCompletion(input) => {
-                TitleFormat::debug("Completion").sub_title(&input.result)
-            }
+            Tools::ForgeToolFollowup(input) => TitleFormat::debug("Follow-up")
+                .sub_title(&input.question)
+                .into(),
+            Tools::ForgeToolAttemptCompletion(input) => Content::Summary(input.result.clone()),
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -78,7 +92,16 @@ mod tests {
     use forge_domain::{Environment, FSRead, FSWrite, Shell, Tools};
     use pretty_assertions::assert_eq;
 
-    use super::InputTitle;
+    use super::{Content, InputTitle};
+
+    impl Content {
+        pub fn render(&self, with_timestamp: bool) -> String {
+            match self {
+                Content::Title(title) => title.render(with_timestamp),
+                Content::Summary(summary) => summary.clone(),
+            }
+        }
+    }
 
     fn fixture_environment() -> Environment {
         Environment {
@@ -117,8 +140,8 @@ mod tests {
         });
         let env = fixture_environment();
 
-        let title_format = fixture.to_title(&env);
-        let rendered = title_format.render(false);
+        let actual_content = fixture.to_content(&env);
+        let rendered = actual_content.render(false);
         let actual = strip_ansi_codes(&rendered);
         let expected = "⏺ Read src/main.rs";
 
@@ -135,8 +158,8 @@ mod tests {
         });
         let env = fixture_environment();
 
-        let title_format = fixture.to_title(&env);
-        let rendered = title_format.render(false);
+        let actual_content = fixture.to_content(&env);
+        let rendered = actual_content.render(false);
         let actual = strip_ansi_codes(&rendered);
         let expected = "⏺ Read (Range) src/main.rs";
 
@@ -153,8 +176,8 @@ mod tests {
         });
         let env = fixture_environment();
 
-        let title_format = fixture.to_title(&env);
-        let rendered = title_format.render(false);
+        let actual_content = fixture.to_content(&env);
+        let rendered = actual_content.render(false);
         let actual = strip_ansi_codes(&rendered);
         let expected = "⏺ Create new_file.txt";
 
@@ -171,8 +194,8 @@ mod tests {
         });
         let env = fixture_environment();
 
-        let title_format = fixture.to_title(&env);
-        let rendered = title_format.render(false);
+        let actual_content = fixture.to_content(&env);
+        let rendered = actual_content.render(false);
         let actual = strip_ansi_codes(&rendered);
         let expected = "⏺ Overwrite existing_file.txt";
 
@@ -189,8 +212,8 @@ mod tests {
         });
         let env = fixture_environment();
 
-        let title_format = fixture.to_title(&env);
-        let rendered = title_format.render(false);
+        let actual_content = fixture.to_content(&env);
+        let rendered = actual_content.render(false);
         let actual = strip_ansi_codes(&rendered);
         let expected = "⏺ Execute [/bin/bash] ls -la";
 
@@ -206,24 +229,18 @@ mod tests {
             explanation: None,
         });
         let env = fixture_environment();
-        let title_format = fixture.to_title(&env);
+        let content = fixture.to_content(&env);
 
         // Test render(false) - should not include timestamp
-        let rendered_without_timestamp = title_format.render(false);
-        let actual_without = strip_ansi_codes(&rendered_without_timestamp);
+        let rendered_without = content.render(false);
+        let actual_without = strip_ansi_codes(&rendered_without);
         assert!(!actual_without.contains("["));
         assert!(!actual_without.contains(":"));
 
         // Test render(true) - should include timestamp
-        let rendered_with_timestamp = title_format.render(true);
-        let actual_with = strip_ansi_codes(&rendered_with_timestamp);
+        let rendered_with = content.render(true);
+        let actual_with = strip_ansi_codes(&rendered_with);
         assert!(actual_with.contains("["));
         assert!(actual_with.contains(":"));
-
-        // Test Display trait - should include timestamp (same as render(true))
-        let display_string = title_format.to_string();
-        let actual_display = strip_ansi_codes(&display_string);
-        assert!(actual_display.contains("["));
-        assert!(actual_display.contains(":"));
     }
 }
