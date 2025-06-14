@@ -109,6 +109,32 @@ impl ForgeEnvironmentService {
         config
     }
 
+    fn resolve_timeout_config(&self) -> forge_domain::HttpConfig {
+        let mut config = forge_domain::HttpConfig::default();
+        if let Ok(val) = std::env::var("FORGE_HTTP_READ_TIMEOUT") {
+            if let Ok(parsed) = val.parse::<u64>() {
+                config.read_timeout = parsed;
+            }
+        }
+        if let Ok(val) = std::env::var("FORGE_HTTP_POOL_IDLE_TIMEOUT") {
+            if let Ok(parsed) = val.parse::<u64>() {
+                config.pool_idle_timeout = parsed;
+            }
+        }
+        if let Ok(val) = std::env::var("FORGE_HTTP_POOL_MAX_IDLE_PER_HOST") {
+            if let Ok(parsed) = val.parse::<usize>() {
+                config.pool_max_idle_per_host = parsed;
+            }
+        }
+        if let Ok(val) = std::env::var("FORGE_HTTP_MAX_REDIRECTS") {
+            if let Ok(parsed) = val.parse::<usize>() {
+                config.max_redirects = parsed;
+            }
+        }
+
+        config
+    }
+
     fn get(&self) -> Environment {
         let cwd = std::env::current_dir().unwrap_or(PathBuf::from("."));
         if !self.is_env_loaded.read().map(|v| *v).unwrap_or_default() {
@@ -135,6 +161,7 @@ impl ForgeEnvironmentService {
             max_read_size: 500,
             stdout_max_prefix_length: 200,
             stdout_max_suffix_length: 200,
+            http: self.resolve_timeout_config(),
         }
     }
 
