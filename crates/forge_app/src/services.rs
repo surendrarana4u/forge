@@ -68,7 +68,7 @@ pub enum ResponseContext {
 pub struct FsCreateOutput {
     pub path: String,
     // Set when the file already exists
-    pub previous: Option<String>,
+    pub before: Option<String>,
     pub warning: Option<String>,
 }
 
@@ -201,7 +201,7 @@ pub trait FsPatchService: Send + Sync {
     async fn patch(
         &self,
         path: String,
-        search: String,
+        search: Option<String>,
         operation: PatchOperation,
         content: String,
     ) -> anyhow::Result<PatchOutput>;
