@@ -65,27 +65,27 @@ fn clip_by_lines(
 /// Represents formatted output with truncation metadata
 #[derive(Debug)]
 struct FormattedOutput {
-    content: String,
-    prefix_count: usize,
-    suffix_size: usize,
-    hidden_count: usize,
+    head: String,
+    tail: Option<String>,
+    suffix_start_line: Option<usize>,
+    suffix_end_line: Option<usize>,
+    prefix_end_line: usize,
 }
 
 /// Represents the result of processing a stream
 #[derive(Debug)]
 struct ProcessedStream {
     output: FormattedOutput,
-    is_truncated: bool,
+    total_lines: usize,
 }
 
 /// Helper to process a stream and return structured output
 fn process_stream(content: &str, prefix_lines: usize, suffix_lines: usize) -> ProcessedStream {
     let (lines, truncation_info) = clip_by_lines(content, prefix_lines, suffix_lines);
-    let is_truncated = truncation_info.is_some();
     let total_lines = content.lines().count();
     let output = tag_output(lines, truncation_info, total_lines);
 
-    ProcessedStream { output, is_truncated }
+    ProcessedStream { output, total_lines }
 }
 
 /// Helper function to format potentially truncated output for stdout or stderr
@@ -97,26 +97,28 @@ fn tag_output(
     match truncation_info {
         Some((prefix_count, hidden_count)) => {
             let suffix_start_line = prefix_count + hidden_count + 1;
-            let suffix_size = total_lines - suffix_start_line + 1;
-
-            let mut content = String::new();
+            let mut head = String::new();
+            let mut tail = String::new();
 
             // Add prefix lines
             for line in lines.iter().take(prefix_count) {
-                content.push_str(line);
-                content.push('\n');
+                head.push_str(line);
+                head.push('\n');
             }
-
-            // Add truncation marker
-            content.push_str(&format!("... [{hidden_count} lines omitted] ...\n"));
 
             // Add suffix lines
             for line in lines.iter().skip(prefix_count) {
-                content.push_str(line);
-                content.push('\n');
+                tail.push_str(line);
+                tail.push('\n');
             }
 
-            FormattedOutput { content, prefix_count, suffix_size, hidden_count }
+            FormattedOutput {
+                head,
+                tail: Some(tail),
+                suffix_start_line: Some(suffix_start_line),
+                suffix_end_line: Some(total_lines),
+                prefix_end_line: prefix_count,
+            }
         }
         None => {
             // No truncation, output all lines
@@ -128,10 +130,11 @@ fn tag_output(
                 }
             }
             FormattedOutput {
-                content,
-                prefix_count: total_lines,
-                suffix_size: total_lines,
-                hidden_count: 0,
+                head: content,
+                tail: None,
+                suffix_start_line: None,
+                suffix_end_line: None,
+                prefix_end_line: total_lines,
             }
         }
     }
@@ -148,31 +151,117 @@ pub fn truncate_shell_output(
     let stderr_result = process_stream(stderr, prefix_lines, suffix_lines);
 
     TruncatedShellOutput {
-        stdout: stdout_result.output.content,
-        stderr: stderr_result.output.content,
-        stdout_truncated: stdout_result.is_truncated,
-        stderr_truncated: stderr_result.is_truncated,
-        stdout_prefix_count: stdout_result.output.prefix_count,
-        stdout_suffix_size: stdout_result.output.suffix_size,
-        stdout_hidden_count: stdout_result.output.hidden_count,
-        stderr_prefix_count: stderr_result.output.prefix_count,
-        stderr_hidden_count: stderr_result.output.hidden_count,
-        stderr_suffix_size: stderr_result.output.suffix_size,
+        stderr: Stderr {
+            head: stderr_result.output.head,
+            tail: stderr_result.output.tail,
+            total_lines: stderr_result.total_lines,
+            head_end_line: stderr_result.output.prefix_end_line,
+            tail_start_line: stderr_result.output.suffix_start_line,
+            tail_end_line: stderr_result.output.suffix_end_line,
+        },
+        stdout: Stdout {
+            head: stdout_result.output.head,
+            tail: stdout_result.output.tail,
+            total_lines: stdout_result.total_lines,
+            head_end_line: stdout_result.output.prefix_end_line,
+            tail_start_line: stdout_result.output.suffix_start_line,
+            tail_end_line: stdout_result.output.suffix_end_line,
+        },
     }
+}
+
+/// Trait for stream elements that can be converted to XML elements
+pub trait StreamElement {
+    fn stream_name(&self) -> &'static str;
+    fn head_content(&self) -> &str;
+    fn tail_content(&self) -> Option<&str>;
+    fn total_lines(&self) -> usize;
+    fn head_end_line(&self) -> usize;
+    fn tail_start_line(&self) -> Option<usize>;
+    fn tail_end_line(&self) -> Option<usize>;
+}
+
+impl StreamElement for Stdout {
+    fn stream_name(&self) -> &'static str {
+        "stdout"
+    }
+
+    fn head_content(&self) -> &str {
+        &self.head
+    }
+
+    fn tail_content(&self) -> Option<&str> {
+        self.tail.as_deref()
+    }
+
+    fn total_lines(&self) -> usize {
+        self.total_lines
+    }
+
+    fn head_end_line(&self) -> usize {
+        self.head_end_line
+    }
+
+    fn tail_start_line(&self) -> Option<usize> {
+        self.tail_start_line
+    }
+
+    fn tail_end_line(&self) -> Option<usize> {
+        self.tail_end_line
+    }
+}
+
+impl StreamElement for Stderr {
+    fn stream_name(&self) -> &'static str {
+        "stderr"
+    }
+
+    fn head_content(&self) -> &str {
+        &self.head
+    }
+
+    fn tail_content(&self) -> Option<&str> {
+        self.tail.as_deref()
+    }
+
+    fn total_lines(&self) -> usize {
+        self.total_lines
+    }
+
+    fn head_end_line(&self) -> usize {
+        self.head_end_line
+    }
+
+    fn tail_start_line(&self) -> Option<usize> {
+        self.tail_start_line
+    }
+
+    fn tail_end_line(&self) -> Option<usize> {
+        self.tail_end_line
+    }
+}
+pub struct Stdout {
+    pub head: String,
+    pub tail: Option<String>,
+    pub total_lines: usize,
+    pub head_end_line: usize,
+    pub tail_start_line: Option<usize>,
+    pub tail_end_line: Option<usize>,
+}
+
+pub struct Stderr {
+    pub head: String,
+    pub tail: Option<String>,
+    pub total_lines: usize,
+    pub head_end_line: usize,
+    pub tail_start_line: Option<usize>,
+    pub tail_end_line: Option<usize>,
 }
 
 /// Result of shell output truncation
 pub struct TruncatedShellOutput {
-    pub stdout: String,
-    pub stderr: String,
-    pub stdout_truncated: bool,
-    pub stderr_truncated: bool,
-    pub stdout_prefix_count: usize,
-    pub stdout_suffix_size: usize,
-    pub stdout_hidden_count: usize,
-    pub stderr_prefix_count: usize,
-    pub stderr_hidden_count: usize,
-    pub stderr_suffix_size: usize,
+    pub stdout: Stdout,
+    pub stderr: Stderr,
 }
 
 /// Represents the result of fetch content truncation

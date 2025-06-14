@@ -2,16 +2,14 @@
 source: crates/forge_app/src/execution_result.rs
 expression: to_value(actual)
 ---
-<shell_output>
-<metadata>
-<command><![CDATA[echo hello]]></command>
-<shell>/bin/bash</shell>
-<exit_code>0</exit_code>
-</metadata>
-<stdout>
-<displayed_lines>2</displayed_lines>
-<total_lines>2</total_lines>
-<content><![CDATA[hello
-world]]></content>
+<shell_output
+  command="echo hello"
+  shell="/bin/bash"
+  exit_code="0"
+>
+<stdout
+  total_lines="2"
+><![CDATA[hello
+world]]>
 </stdout>
 </shell_output>

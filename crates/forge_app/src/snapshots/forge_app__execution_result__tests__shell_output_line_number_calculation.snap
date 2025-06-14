@@ -2,16 +2,15 @@
 source: crates/forge_app/src/execution_result.rs
 expression: to_value(actual)
 ---
-<shell_output>
-<metadata>
-<command><![CDATA[line_test_command]]></command>
-<shell>/bin/bash</shell>
-<exit_code>0</exit_code>
-</metadata>
-<stdout>
-<displayed_lines>15</displayed_lines>
-<total_lines>15</total_lines>
-<content><![CDATA[stdout 1
+<shell_output
+  command="line_test_command"
+  shell="/bin/bash"
+  exit_code="0"
+>
+<stdout
+  total_lines="15"
+  full_output="/tmp/stdout_content.txt"
+><![CDATA[stdout 1
 stdout 2
 stdout 3
 stdout 4
@@ -25,12 +24,12 @@ stdout 11
 stdout 12
 stdout 13
 stdout 14
-stdout 15]]></content>
+stdout 15]]>
 </stdout>
-<stderr>
-<displayed_lines>12</displayed_lines>
-<total_lines>12</total_lines>
-<content><![CDATA[stderr 1
+<stderr
+  total_lines="12"
+  full_output="/tmp/stderr_content.txt"
+><![CDATA[stderr 1
 stderr 2
 stderr 3
 stderr 4
@@ -41,6 +40,6 @@ stderr 8
 stderr 9
 stderr 10
 stderr 11
-stderr 12]]></content>
+stderr 12]]>
 </stderr>
 </shell_output>
