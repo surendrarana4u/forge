@@ -126,13 +126,39 @@ impl ExecutionResult {
                 forge_domain::ToolOutput::text(elm)
             }
             (Tools::ForgeToolFsUndo(input), ExecutionResult::FsUndo(output)) => {
-                let diff = DiffFormat::format(&output.before_undo, &output.after_undo);
-                let elm = Element::new("file_diff")
-                    .attr("path", input.path)
-                    .attr("status", "restored")
-                    .cdata(strip_ansi_codes(&diff));
+                match (&output.before_undo, &output.after_undo) {
+                    (None, None) => {
+                        let elm = Element::new("file_undo")
+                            .attr("path", input.path)
+                            .attr("status", "no_changes");
+                        forge_domain::ToolOutput::text(elm)
+                    }
+                    (None, Some(after)) => {
+                        let elm = Element::new("file_undo")
+                            .attr("path", input.path)
+                            .attr("status", "created")
+                            .attr("total_lines", after.lines().count())
+                            .cdata(after);
+                        forge_domain::ToolOutput::text(elm)
+                    }
+                    (Some(before), None) => {
+                        let elm = Element::new("file_undo")
+                            .attr("path", input.path)
+                            .attr("status", "removed")
+                            .attr("total_lines", before.lines().count())
+                            .cdata(before);
+                        forge_domain::ToolOutput::text(elm)
+                    }
+                    (Some(after), Some(before)) => {
+                        let diff = DiffFormat::format(before, after);
+                        let elm = Element::new("file_undo")
+                            .attr("path", input.path)
+                            .attr("status", "restored")
+                            .cdata(strip_ansi_codes(&diff));
 
-                forge_domain::ToolOutput::text(elm)
+                        forge_domain::ToolOutput::text(elm)
+                    }
+                }
             }
             (Tools::ForgeToolNetFetch(input), ExecutionResult::NetFetch(output)) => {
                 let content_type = match output.context {
@@ -1018,10 +1044,83 @@ mod tests {
     }
 
     #[test]
+    fn test_fs_undo_no_changes() {
+        let fixture = ExecutionResult::FsUndo(FsUndoOutput { before_undo: None, after_undo: None });
+
+        let input = Tools::ForgeToolFsUndo(forge_domain::FSUndo {
+            path: "/home/user/unchanged_file.txt".to_string(),
+            explanation: Some("Attempting to undo file with no changes".to_string()),
+        });
+
+        let env = fixture_environment();
+
+        let actual = fixture.into_tool_output(input, None, &env);
+
+        insta::assert_snapshot!(to_value(actual));
+    }
+
+    #[test]
+    fn test_fs_undo_file_created() {
+        let fixture = ExecutionResult::FsUndo(FsUndoOutput {
+            before_undo: None,
+            after_undo: Some("New file content\nLine 2\nLine 3".to_string()),
+        });
+
+        let input = Tools::ForgeToolFsUndo(forge_domain::FSUndo {
+            path: "/home/user/new_file.txt".to_string(),
+            explanation: Some("Undoing operation resulted in file creation".to_string()),
+        });
+
+        let env = fixture_environment();
+
+        let actual = fixture.into_tool_output(input, None, &env);
+
+        insta::assert_snapshot!(to_value(actual));
+    }
+
+    #[test]
+    fn test_fs_undo_file_removed() {
+        let fixture = ExecutionResult::FsUndo(FsUndoOutput {
+            before_undo: Some("Original file content\nThat was deleted\nDuring undo".to_string()),
+            after_undo: None,
+        });
+
+        let input = Tools::ForgeToolFsUndo(forge_domain::FSUndo {
+            path: "/home/user/deleted_file.txt".to_string(),
+            explanation: Some("Undoing operation resulted in file removal".to_string()),
+        });
+
+        let env = fixture_environment();
+
+        let actual = fixture.into_tool_output(input, None, &env);
+
+        insta::assert_snapshot!(to_value(actual));
+    }
+
+    #[test]
+    fn test_fs_undo_file_restored() {
+        let fixture = ExecutionResult::FsUndo(FsUndoOutput {
+            before_undo: Some("Original content\nBefore changes".to_string()),
+            after_undo: Some("Modified content\nAfter restoration".to_string()),
+        });
+
+        let input = Tools::ForgeToolFsUndo(forge_domain::FSUndo {
+            path: "/home/user/restored_file.txt".to_string(),
+            explanation: Some("Reverting changes to restore previous state".to_string()),
+        });
+
+        let env = fixture_environment();
+
+        let actual = fixture.into_tool_output(input, None, &env);
+
+        insta::assert_snapshot!(to_value(actual));
+    }
+
+    #[test]
     fn test_fs_undo_success() {
         let fixture = ExecutionResult::FsUndo(FsUndoOutput {
-            before_undo: "ABC".to_string(),
-            after_undo: "PQR".to_string(),
+            before_undo: Some("ABC".to_string()),
+            after_undo: Some("PQR".to_string()),
         });
 
         let input = Tools::ForgeToolFsUndo(forge_domain::FSUndo {

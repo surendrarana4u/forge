@@ -75,10 +75,10 @@ pub struct FsCreateOutput {
 #[derive(Debug)]
 pub struct FsRemoveOutput {}
 
-#[derive(Debug, derive_more::From)]
+#[derive(Default, Debug, derive_more::From)]
 pub struct FsUndoOutput {
-    pub before_undo: String,
-    pub after_undo: String,
+    pub before_undo: Option<String>,
+    pub after_undo: Option<String>,
 }
 
 #[async_trait::async_trait]

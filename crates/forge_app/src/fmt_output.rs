@@ -264,8 +264,8 @@ mod tests {
     #[test]
     fn test_fs_undo() {
         let fixture = ExecutionResult::FsUndo(FsUndoOutput {
-            before_undo: "ABC".to_string(),
-            after_undo: "PQR".to_string(),
+            before_undo: Some("ABC".to_string()),
+            after_undo: Some("PQR".to_string()),
         });
         let env = fixture_environment();
 
