@@ -9,14 +9,9 @@ expression: to_value(actual)
 <exit_code>0</exit_code>
 </metadata>
 <stdout>
-<displayed_lines>4</displayed_lines>
+<displayed_lines>2</displayed_lines>
 <total_lines>2</total_lines>
 <content><![CDATA[hello
 world]]></content>
 </stdout>
-<stderr>
-<displayed_lines>0</displayed_lines>
-<total_lines>0</total_lines>
-<content><![CDATA[]]></content>
-</stderr>
 </shell_output>

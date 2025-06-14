@@ -18,7 +18,7 @@ expression: to_value(actual)
 </stdout_line_range>
 </full_content_file>
 <stdout>
-<displayed_lines>20</displayed_lines>
+<displayed_lines>10</displayed_lines>
 <total_lines>25</total_lines>
 <content><![CDATA[stdout line 1
 stdout line 2
@@ -48,9 +48,4 @@ stdout line 25
 <omitted_lines>5</omitted_lines>
 </truncation_info>
 </stdout>
-<stderr>
-<displayed_lines>0</displayed_lines>
-<total_lines>0</total_lines>
-<content><![CDATA[]]></content>
-</stderr>
 </shell_output>
