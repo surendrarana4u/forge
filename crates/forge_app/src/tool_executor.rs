@@ -120,10 +120,6 @@ impl<S: Services> ToolExecutor<S> {
         let execution_result = self.call_internal(tool_input.clone()).await;
         if let Err(ref error) = execution_result {
             tracing::error!(error = ?error, "Tool execution failed");
-            // Send failure message
-            context
-                .send_text(TitleFormat::error(error.to_string()))
-                .await?;
         }
 
         let execution_result = execution_result?;
