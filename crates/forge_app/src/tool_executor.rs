@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use forge_display::TitleFormat;
 use forge_domain::{ToolCallContext, ToolCallFull, ToolOutput, Tools};
 
 use crate::error::Error;
