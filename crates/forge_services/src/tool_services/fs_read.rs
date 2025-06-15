@@ -5,7 +5,7 @@ use anyhow::Context;
 use forge_app::{Content, EnvironmentService, FsReadService, ReadOutput};
 
 use crate::utils::assert_absolute_path;
-use crate::{FsReadService as _, Infrastructure};
+use crate::{FsMetaService, FsReadService as _, Infrastructure};
 
 /// Resolves and validates line ranges, ensuring they are always valid
 /// and within the specified maximum size.
@@ -39,6 +39,32 @@ pub fn resolve_range(start_line: Option<u64>, end_line: Option<u64>, max_size: u
     (start, end)
 }
 
+/// Validates that file size does not exceed the maximum allowed file size.
+///
+/// # Arguments
+/// * `infra` - The infrastructure instance providing file metadata services
+/// * `path` - The file path to check
+/// * `max_file_size` - Maximum allowed file size in bytes
+///
+/// # Returns
+/// * `Ok(())` if file size is within limits
+/// * `Err(anyhow::Error)` if file exceeds max_file_size
+async fn assert_file_size<F: Infrastructure>(
+    infra: &F,
+    path: &Path,
+    max_file_size: u64,
+) -> anyhow::Result<()> {
+    let file_size = infra.file_meta_service().file_size(path).await?;
+    if file_size > max_file_size {
+        return Err(anyhow::anyhow!(
+            "File size ({} bytes) exceeds the maximum allowed size of {} bytes",
+            file_size,
+            max_file_size
+        ));
+    }
+    Ok(())
+}
+
 /// Reads file contents from the specified absolute path. Ideal for analyzing
 /// code, configuration files, documentation, or textual data. Automatically
 /// extracts text from PDF and DOCX files, preserving the original formatting.
@@ -69,6 +95,9 @@ impl<F: Infrastructure> FsReadService for ForgeFsRead<F> {
         assert_absolute_path(path)?;
         let env = self.0.environment_service().get_environment();
 
+        // Validate file size before reading content
+        assert_file_size(&*self.0, path, env.max_file_size).await?;
+
         let (start_line, end_line) = resolve_range(start_line, end_line, env.max_read_size);
 
         let (content, file_info) = self
@@ -90,8 +119,135 @@ impl<F: Infrastructure> FsReadService for ForgeFsRead<F> {
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
+    use tempfile::NamedTempFile;
+    use tokio::fs;
 
     use super::*;
+    use crate::attachment::tests::MockInfrastructure;
+
+    // Helper to create a temporary file with specific content size
+    async fn create_test_file_with_size(size: usize) -> anyhow::Result<NamedTempFile> {
+        let file = NamedTempFile::new()?;
+        let content = "x".repeat(size);
+        fs::write(file.path(), content).await?;
+        Ok(file)
+    }
+
+    #[tokio::test]
+    async fn test_assert_file_size_within_limit() {
+        let fixture = create_test_file_with_size(13).await.unwrap();
+        let infra = MockInfrastructure::new();
+        // Add the file to the mock infrastructure
+        infra
+            .file_service
+            .add_file(fixture.path().to_path_buf(), "x".repeat(13));
+        let actual = assert_file_size(&infra, fixture.path(), 20u64).await;
+        assert!(actual.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_assert_file_size_exactly_at_limit() {
+        let fixture = create_test_file_with_size(6).await.unwrap();
+        let infra = MockInfrastructure::new();
+        infra
+            .file_service
+            .add_file(fixture.path().to_path_buf(), "x".repeat(6));
+        let actual = assert_file_size(&infra, fixture.path(), 6u64).await;
+        assert!(actual.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_assert_file_size_exceeds_limit() {
+        let fixture = create_test_file_with_size(45).await.unwrap();
+        let infra = MockInfrastructure::new();
+        infra
+            .file_service
+            .add_file(fixture.path().to_path_buf(), "x".repeat(45));
+        let actual = assert_file_size(&infra, fixture.path(), 10u64).await;
+        assert!(actual.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_assert_file_size_empty_content() {
+        let fixture = create_test_file_with_size(0).await.unwrap();
+        let infra = MockInfrastructure::new();
+        infra
+            .file_service
+            .add_file(fixture.path().to_path_buf(), "".to_string());
+        let actual = assert_file_size(&infra, fixture.path(), 100u64).await;
+        assert!(actual.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_assert_file_size_zero_limit() {
+        let fixture = create_test_file_with_size(1).await.unwrap();
+        let infra = MockInfrastructure::new();
+        infra
+            .file_service
+            .add_file(fixture.path().to_path_buf(), "x".to_string());
+        let actual = assert_file_size(&infra, fixture.path(), 0u64).await;
+        assert!(actual.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_assert_file_size_large_content() {
+        let fixture = create_test_file_with_size(1000).await.unwrap();
+        let infra = MockInfrastructure::new();
+        infra
+            .file_service
+            .add_file(fixture.path().to_path_buf(), "x".repeat(1000));
+        let actual = assert_file_size(&infra, fixture.path(), 999u64).await;
+        assert!(actual.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_assert_file_size_large_content_within_limit() {
+        let fixture = create_test_file_with_size(1000).await.unwrap();
+        let infra = MockInfrastructure::new();
+        infra
+            .file_service
+            .add_file(fixture.path().to_path_buf(), "x".repeat(1000));
+        let actual = assert_file_size(&infra, fixture.path(), 1000u64).await;
+        assert!(actual.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_assert_file_size_unicode_content() {
+        let file = NamedTempFile::new().unwrap();
+        fs::write(file.path(), "🚀🚀🚀").await.unwrap(); // Each emoji is 4 bytes in UTF-8 = 12 bytes total
+        let infra = MockInfrastructure::new();
+        infra
+            .file_service
+            .add_file(file.path().to_path_buf(), "🚀🚀🚀".to_string());
+        let actual = assert_file_size(&infra, file.path(), 12u64).await;
+        assert!(actual.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_assert_file_size_unicode_content_exceeds() {
+        let file = NamedTempFile::new().unwrap();
+        fs::write(file.path(), "🚀🚀🚀🚀").await.unwrap(); // 4 emojis = 16 bytes, exceeds 12 byte limit
+        let infra = MockInfrastructure::new();
+        infra
+            .file_service
+            .add_file(file.path().to_path_buf(), "🚀🚀🚀🚀".to_string());
+        let actual = assert_file_size(&infra, file.path(), 12u64).await;
+        assert!(actual.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_assert_file_size_error_message() {
+        let file = NamedTempFile::new().unwrap();
+        fs::write(file.path(), "too long content").await.unwrap(); // 16 bytes
+        let infra = MockInfrastructure::new();
+        infra
+            .file_service
+            .add_file(file.path().to_path_buf(), "too long content".to_string());
+        let actual = assert_file_size(&infra, file.path(), 5u64).await;
+        let expected = "File size (16 bytes) exceeds the maximum allowed size of 5 bytes";
+        assert!(actual.is_err());
+        assert_eq!(actual.unwrap_err().to_string(), expected);
+    }
 
     #[test]
     fn test_resolve_range_with_defaults() {

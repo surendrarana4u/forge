@@ -75,6 +75,7 @@ pub trait FileRemoveService: Send + Sync {
 pub trait FsMetaService: Send + Sync {
     async fn is_file(&self, path: &Path) -> anyhow::Result<bool>;
     async fn exists(&self, path: &Path) -> anyhow::Result<bool>;
+    async fn file_size(&self, path: &Path) -> anyhow::Result<u64>;
 }
 
 #[async_trait::async_trait]
