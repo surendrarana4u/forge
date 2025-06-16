@@ -45,9 +45,6 @@ agents:
       - forge_tool_net_fetch
       - forge_tool_fs_search
       - forge_tool_fs_undo
-    subscribe:
-      - forge/user_task_init
-      - forge/user_task_update
     max_walker_depth: 1
 
   - id: muse
@@ -78,7 +75,4 @@ agents:
       - forge_tool_fs_search
       - forge_tool_fs_create
       - forge_tool_fs_patch
-    subscribe:
-      - muse/user_task_init
-      - muse/user_task_update
     max_walker_depth: 1

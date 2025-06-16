@@ -213,6 +213,15 @@ impl Agent {
             false
         }
     }
+
+    pub fn add_subscription(&mut self, event: impl ToString) {
+        let event_string = event.to_string();
+
+        let subscribe_list = self.subscribe.get_or_insert_with(Vec::new);
+        if !subscribe_list.contains(&event_string) {
+            subscribe_list.push(event_string);
+        }
+    }
 }
 
 impl Key for Agent {
@@ -523,5 +532,68 @@ mod tests {
 
         let agent: Agent = serde_json::from_value(json).unwrap();
         assert_eq!(agent.max_tokens, None);
+    }
+
+    #[test]
+    fn test_add_subscription_to_empty_agent() {
+        let mut fixture = Agent::new("test-agent");
+        fixture.add_subscription("test-event");
+
+        let actual = fixture.subscribe.as_ref().unwrap();
+        let expected = vec!["test-event".to_string()];
+        assert_eq!(actual, &expected);
+    }
+
+    #[test]
+    fn test_add_subscription_to_existing_list() {
+        let mut fixture = Agent::new("test-agent").subscribe(vec!["existing-event".to_string()]);
+        fixture.add_subscription("new-event");
+
+        let actual = fixture.subscribe.as_ref().unwrap();
+        let expected = vec!["existing-event".to_string(), "new-event".to_string()];
+        assert_eq!(actual, &expected);
+    }
+
+    #[test]
+    fn test_add_subscription_duplicate_prevention() {
+        let mut fixture = Agent::new("test-agent").subscribe(vec!["existing-event".to_string()]);
+        fixture.add_subscription("existing-event");
+
+        let actual = fixture.subscribe.as_ref().unwrap();
+        let expected = vec!["existing-event".to_string()];
+        assert_eq!(actual, &expected);
+    }
+
+    #[test]
+    fn test_add_subscription_multiple_events() {
+        let mut fixture = Agent::new("test-agent");
+        fixture.add_subscription("event1");
+        fixture.add_subscription("event2");
+        fixture.add_subscription("event1"); // duplicate
+        fixture.add_subscription("event3");
+
+        let actual = fixture.subscribe.as_ref().unwrap();
+        let expected = vec![
+            "event1".to_string(),
+            "event2".to_string(),
+            "event3".to_string(),
+        ];
+        assert_eq!(actual, &expected);
+    }
+
+    #[test]
+    fn test_add_subscription_with_string_types() {
+        let mut fixture = Agent::new("test-agent");
+        fixture.add_subscription("string_literal");
+        fixture.add_subscription(String::from("owned_string"));
+        fixture.add_subscription(&"string_ref".to_string());
+
+        let actual = fixture.subscribe.as_ref().unwrap();
+        let expected = vec![
+            "string_literal".to_string(),
+            "owned_string".to_string(),
+            "string_ref".to_string(),
+        ];
+        assert_eq!(actual, &expected);
     }
 }

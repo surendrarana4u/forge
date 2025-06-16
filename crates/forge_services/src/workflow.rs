@@ -84,7 +84,7 @@ impl<F: Infrastructure> ForgeWorkflowService<F> {
         let lsp = if cfg!(debug_assertions) {
             "./forge.schema.json"
         } else {
-            "https://raw.githubusercontent.com/antinomyhq/forge/forge.schema.json"
+            "https://raw.githubusercontent.com/antinomyhq/forge/refs/heads/main/forge.schema.json"
         };
         let contents = serde_yml::to_string(workflow)?;
         Ok(format!("# yaml-language-server: $schema={lsp}\n{contents}"))

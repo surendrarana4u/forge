@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -31,6 +31,57 @@ impl<F: Infrastructure> ForgeTemplateService<F> {
 
         Self { hb: Arc::new(RwLock::new(hb)), infra }
     }
+
+    /// Reads multiple template files in parallel and returns their names and
+    /// contents.
+    ///
+    /// Takes a list of file paths and the current working directory, then reads
+    /// all files concurrently using async futures. Returns a vector of
+    /// (name, content) tuples.
+    async fn read_all(
+        &self,
+        file_paths: &[PathBuf],
+        cwd: &Path,
+    ) -> anyhow::Result<Vec<(String, String)>> {
+        let futures = file_paths.iter().map(|template_path| async {
+            let template_name = template_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .with_context(|| format!("Invalid filename: {}", template_path.display()))?
+                .to_string();
+            let template_path = cwd.join(template_path.clone());
+            let content = self
+                .infra
+                .file_read_service()
+                .read_utf8(&template_path)
+                .await?;
+            Ok::<_, anyhow::Error>((template_name, content))
+        });
+
+        future::join_all(futures)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+    }
+}
+
+/// Compiles a template based on the filename and content.
+///
+/// If the filename ends with ".hbs", it compiles the content as a Handlebars
+/// template. Otherwise, it creates a raw string template.
+fn compile_template(name: &str, content: &str) -> anyhow::Result<handlebars::template::Template> {
+    if name.ends_with(".hbs") {
+        handlebars::Template::compile(content).map_err(Into::into)
+    } else {
+        let mut template = handlebars::template::Template::new();
+        template
+            .elements
+            .push(handlebars::template::TemplateElement::RawString(
+                content.to_string(),
+            ));
+        template.name = Some(name.to_owned());
+        Ok(template)
+    }
 }
 
 #[async_trait::async_trait]
@@ -59,41 +110,14 @@ impl<F: Infrastructure> TemplateService for ForgeTemplateService<F> {
         drop(guard);
 
         // Read all files concurrently
-        let futures = unregistered_files.iter().map(|template_path| async {
-            let template_name = template_path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .with_context(|| format!("Invalid filename: {}", template_path.display()))?;
-            let template_path = cwd.as_path().join(template_path.clone());
-            let content = self
-                .infra
-                .file_read_service()
-                .read_utf8(&template_path)
-                .await?;
-            Ok::<_, anyhow::Error>((template_name, content))
-        });
-
-        let templates = future::join_all(futures)
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()?;
+        let templates = self.read_all(&unregistered_files, cwd.as_path()).await?;
 
         // Register all templates if any were found
         if !templates.is_empty() {
             let mut guard = self.hb.write().await;
             for (name, content) in templates {
-                let template: handlebars::template::Template = if name.ends_with(".hbs") {
-                    handlebars::Template::compile(&content)?
-                } else {
-                    let mut template = handlebars::template::Template::new();
-                    template
-                        .elements
-                        .push(handlebars::template::TemplateElement::RawString(content));
-                    template.name = Some(name.to_owned());
-                    template
-                };
-
-                guard.register_template(name, template);
+                let template = compile_template(&name, &content)?;
+                guard.register_template(&name, template);
             }
         }
 
@@ -164,5 +188,121 @@ mod tests {
 
         // Expected: Result should contain the rendered system info with substituted
         assert!(actual.contains("<operating_system>test-os</operating_system>"));
+    }
+
+    #[test]
+    fn test_compile_template_hbs_file() {
+        // Fixture: Create a handlebars template content and test data
+        let name = "test.hbs";
+        let content = "Hello {{name}}!";
+        let test_data = json!({"name": "World"});
+
+        // Actual: Compile the template and render it
+        let template = compile_template(name, content).unwrap();
+        let mut hb = Handlebars::new();
+        hb.register_template("test", template);
+        let actual = hb.render("test", &test_data).unwrap();
+
+        // Expected: Should render the handlebars template with substituted values
+        let expected = "Hello World!";
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_compile_template_raw_file() {
+        // Fixture: Create a raw template content with handlebars-like syntax
+        let name = "test.txt";
+        let content = "This is raw content with {{variables}} that won't be processed";
+        let test_data = json!({"variables": "should not substitute"});
+
+        // Actual: Compile the template and render it
+        let template = compile_template(name, content).unwrap();
+        let mut hb = Handlebars::new();
+        hb.register_template("test", template);
+        let actual = hb.render("test", &test_data).unwrap();
+
+        // Expected: Should render the raw content without any substitution
+        let expected = "This is raw content with {{variables}} that won't be processed";
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_compile_template_invalid_hbs() {
+        // Fixture: Create invalid handlebars content
+        let name = "invalid.hbs";
+        let content = "{{#if unclosed";
+
+        // Actual: Try to compile the invalid template
+        let actual = compile_template(name, content);
+
+        // Expected: Should return an error
+        assert!(actual.is_err());
+        let error_msg = actual.unwrap_err().to_string();
+        // The error should indicate a handlebars syntax issue
+        assert!(error_msg.contains("handlebars syntax") || error_msg.contains("Template error"));
+    }
+
+    #[test]
+    fn test_compile_template_empty_content() {
+        // Fixture: Create empty content for both file types
+        let hbs_name = "empty.hbs";
+        let raw_name = "empty.txt";
+        let content = "";
+        let test_data = json!({});
+
+        // Actual: Compile both templates and render them
+        let hbs_template = compile_template(hbs_name, content).unwrap();
+        let raw_template = compile_template(raw_name, content).unwrap();
+
+        let mut hb = Handlebars::new();
+        hb.register_template("hbs_test", hbs_template);
+        hb.register_template("raw_test", raw_template);
+
+        let hbs_actual = hb.render("hbs_test", &test_data).unwrap();
+        let raw_actual = hb.render("raw_test", &test_data).unwrap();
+
+        // Expected: Both should render as empty strings
+        assert_eq!(hbs_actual, "");
+        assert_eq!(raw_actual, "");
+    }
+
+    #[test]
+    fn test_compile_template_case_sensitivity() {
+        // Fixture: Create templates with different case extensions
+        let uppercase_name = "test.HBS";
+        let lowercase_name = "test.hbs";
+        let content = "Hello {{name}}!";
+        let test_data = json!({"name": "World"});
+
+        // Actual: Compile both templates and render them
+        let uppercase_template = compile_template(uppercase_name, content).unwrap();
+        let lowercase_template = compile_template(lowercase_name, content).unwrap();
+
+        let mut hb = Handlebars::new();
+        hb.register_template("uppercase", uppercase_template);
+        hb.register_template("lowercase", lowercase_template);
+
+        let uppercase_actual = hb.render("uppercase", &test_data).unwrap();
+        let lowercase_actual = hb.render("lowercase", &test_data).unwrap();
+
+        // Expected: Only lowercase .hbs should process handlebars syntax
+        assert_eq!(uppercase_actual, "Hello {{name}}!"); // Raw string, no substitution
+        assert_eq!(lowercase_actual, "Hello World!"); // Handlebars processed
+    }
+
+    #[tokio::test]
+    async fn test_read_template_files_parallel_empty() {
+        use std::path::Path;
+
+        // Fixture: Create service and empty file list
+        let service = ForgeTemplateService::new(Arc::new(MockInfrastructure::new()));
+        let file_paths: Vec<PathBuf> = vec![];
+        let temp_path = Path::new("/tmp");
+
+        // Actual: Read files in parallel with empty list
+        let actual = service.read_all(&file_paths, temp_path).await.unwrap();
+
+        // Expected: Should return empty vector
+        assert_eq!(actual.len(), 0);
     }
 }
