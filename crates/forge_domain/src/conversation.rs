@@ -52,20 +52,15 @@ impl Conversation {
             .clone()
             .ok_or(Error::NoModelDefined(agent.id.clone()))
     }
-    /// Sets the model of the main agent
-    ///
-    /// # Errors
-    /// - `AgentUndefined` if the main agent doesn't exist
-    pub fn set_main_model(&mut self, model: ModelId) -> Result<()> {
-        // Find the main agent and update its model
-        let agent_pos = self
-            .agents
-            .iter()
-            .position(|a| a.id == AgentId::default())
-            .ok_or_else(|| Error::AgentUndefined(AgentId::default()))?;
 
-        // Update the model
-        self.agents[agent_pos].model = Some(model);
+    /// Sets the model for all agents in the conversation
+    pub fn set_model(&mut self, model: &ModelId) -> Result<()> {
+        for agent in self.agents.iter_mut() {
+            agent.model = Some(model.clone());
+            if let Some(ref mut compact) = agent.compact {
+                compact.model = model.clone();
+            }
+        }
 
         Ok(())
     }
@@ -557,42 +552,6 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(Error::NoModelDefined(_))));
     }
-    #[test]
-    fn test_set_main_model_success() {
-        // Arrange
-        let id = super::ConversationId::generate();
-        let main_agent = Agent::new(AgentId::default());
-        // Initially no model defined
-
-        let workflow = Workflow::new().agents(vec![main_agent]);
-
-        let mut conversation = super::Conversation::new_inner(id, workflow, vec![]);
-
-        // Act
-        let result = conversation.set_main_model(ModelId::new("new-model"));
-
-        // Assert
-        assert!(result.is_ok());
-        let model = conversation.main_model().unwrap();
-        assert_eq!(model, ModelId::new("new-model"));
-    }
-
-    #[test]
-    fn test_set_main_model_agent_not_found() {
-        // Arrange
-        let id = super::ConversationId::generate();
-        let agent = Agent::new("some-other-agent");
-
-        let workflow = Workflow::new().agents(vec![agent]);
-
-        let mut conversation = super::Conversation::new_inner(id, workflow, vec![]);
-
-        // Act
-        let result = conversation.set_main_model(ModelId::new("new-model"));
-
-        // Assert
-        assert!(matches!(result, Err(Error::AgentUndefined(_))));
-    }
 
     #[test]
     fn test_conversation_new_applies_tool_supported_to_agents() {
@@ -689,5 +648,29 @@ mod tests {
         let compact = agent2.compact.as_ref().unwrap();
         assert_eq!(compact.model, ModelId::new("workflow-model"));
         assert_eq!(agent2.model, Some(ModelId::new("workflow-model")));
+    }
+
+    #[test]
+    fn test_set_model() {
+        let workflow = Workflow::new().agents(vec![
+            Agent::new("agent-1")
+                .model(ModelId::new("sonnet-4"))
+                .compact(Compact::new(ModelId::new("gemini-1.5"))),
+            Agent::new("agent-2").model(ModelId::new("sonnet-3.5")),
+        ]);
+
+        let id = super::ConversationId::generate();
+        let mut conversation = super::Conversation::new_inner(id.clone(), workflow, vec![]);
+
+        let model_id = ModelId::new("qwen-2");
+        conversation.set_model(&model_id).unwrap();
+
+        // Check that all agents have the model set
+        for agent in conversation.agents.iter_mut() {
+            assert_eq!(agent.model, Some(model_id.clone()));
+            if let Some(ref mut compact) = agent.compact {
+                assert_eq!(compact.model, model_id.clone());
+            }
+        }
     }
 }
