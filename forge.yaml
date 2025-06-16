@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=./forge.schema.json
 variables:
   operating_agent: forge
 commands:
