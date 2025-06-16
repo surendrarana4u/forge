@@ -281,6 +281,10 @@ impl<S: AgentService> Orchestrator<S> {
             context = context.top_k(top_k);
         }
 
+        if let Some(max_tokens) = agent.max_tokens {
+            context = context.max_tokens(max_tokens.value() as usize);
+        }
+
         // Process attachments from the event if they exist
         let attachments = event.attachments.clone();
 

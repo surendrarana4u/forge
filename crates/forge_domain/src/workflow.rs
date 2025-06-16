@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use crate::temperature::Temperature;
 use crate::update::Update;
-use crate::{Agent, AgentId, ModelId, TopK, TopP};
+use crate::{Agent, AgentId, MaxTokens, ModelId, TopK, TopP};
 
 /// Configuration for a workflow that contains all settings
 /// required to initialize a workflow.
@@ -99,6 +99,19 @@ pub struct Workflow {
     #[merge(strategy = crate::merge::option)]
     pub top_k: Option<TopK>,
 
+    /// Maximum number of tokens the model can generate for all agents
+    ///
+    /// Controls the maximum length of the model's response.
+    /// - Lower values (e.g., 100) limit response length for concise outputs
+    /// - Higher values (e.g., 4000) allow for longer, more detailed responses
+    /// - Valid range is 1 to 100,000
+    /// - If not specified, each agent's individual setting or the model
+    ///   provider's default will be used
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[merge(strategy = crate::merge::option)]
+    pub max_tokens: Option<MaxTokens>,
+
     /// Flag to enable/disable tool support for all agents in this workflow.
     /// If not specified, each agent's individual setting will be used.
     /// Default is false (tools disabled) when not specified.
@@ -142,6 +155,7 @@ impl Workflow {
             temperature: None,
             top_p: None,
             top_k: None,
+            max_tokens: None,
             tool_supported: None,
             updates: None,
             templates: None,
@@ -181,6 +195,7 @@ mod tests {
         assert_eq!(actual.temperature, None);
         assert_eq!(actual.top_p, None);
         assert_eq!(actual.top_k, None);
+        assert_eq!(actual.max_tokens, None);
         assert_eq!(actual.tool_supported, None);
     }
 

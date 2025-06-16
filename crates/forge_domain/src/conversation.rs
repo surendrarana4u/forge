@@ -102,6 +102,10 @@ impl Conversation {
                 agent.top_k = Some(top_k);
             }
 
+            if let Some(max_tokens) = workflow.max_tokens {
+                agent.max_tokens = Some(max_tokens);
+            }
+
             if let Some(model) = workflow.model.clone() {
                 agent.model = Some(model.clone());
 
@@ -254,7 +258,9 @@ mod tests {
 
     use serde_json::json;
 
-    use crate::{Agent, AgentId, Command, Compact, Error, ModelId, Temperature, Workflow};
+    use crate::{
+        Agent, AgentId, Command, Compact, Error, MaxTokens, ModelId, Temperature, Workflow,
+    };
 
     #[test]
     fn test_conversation_new_with_empty_workflow() {
@@ -306,6 +312,7 @@ mod tests {
             .max_walker_depth(5)
             .custom_rules("Be helpful".to_string())
             .temperature(Temperature::new(0.7).unwrap())
+            .max_tokens(MaxTokens::new(4000).unwrap())
             .tool_supported(true);
 
         // Act
@@ -320,6 +327,7 @@ mod tests {
             assert_eq!(agent.max_walker_depth, Some(5));
             assert_eq!(agent.custom_rules, Some("Be helpful".to_string()));
             assert_eq!(agent.temperature, Some(Temperature::new(0.7).unwrap()));
+            assert_eq!(agent.max_tokens, Some(MaxTokens::new(4000).unwrap()));
             assert_eq!(agent.tool_supported, Some(true));
         }
     }
@@ -335,6 +343,7 @@ mod tests {
             .max_walker_depth(10_usize)
             .custom_rules("Agent1 specific rules".to_string())
             .temperature(Temperature::new(0.3).unwrap())
+            .max_tokens(MaxTokens::new(1000).unwrap())
             .tool_supported(false);
 
         // Agent without specific settings
@@ -346,6 +355,7 @@ mod tests {
             .max_walker_depth(5)
             .custom_rules("Default rules".to_string())
             .temperature(Temperature::new(0.7).unwrap())
+            .max_tokens(MaxTokens::new(4000).unwrap())
             .tool_supported(true);
 
         // Act
@@ -364,6 +374,7 @@ mod tests {
         assert_eq!(agent1.max_walker_depth, Some(5));
         assert_eq!(agent1.custom_rules, Some("Default rules".to_string()));
         assert_eq!(agent1.temperature, Some(Temperature::new(0.7).unwrap()));
+        assert_eq!(agent1.max_tokens, Some(MaxTokens::new(4000).unwrap()));
         assert_eq!(agent1.tool_supported, Some(true)); // Workflow setting overrides agent setting
 
         // Check that agent2 got the workflow defaults
@@ -376,6 +387,7 @@ mod tests {
         assert_eq!(agent2.max_walker_depth, Some(5));
         assert_eq!(agent2.custom_rules, Some("Default rules".to_string()));
         assert_eq!(agent2.temperature, Some(Temperature::new(0.7).unwrap()));
+        assert_eq!(agent2.max_tokens, Some(MaxTokens::new(4000).unwrap()));
         assert_eq!(agent2.tool_supported, Some(true)); // Workflow setting is
                                                        // applied
     }
