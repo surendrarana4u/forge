@@ -52,10 +52,11 @@ impl From<PartialEvent> for Event {
     }
 }
 
-pub struct UI<F> {
+pub struct UI<A, F: Fn() -> A> {
     markdown: MarkdownFormat,
     state: UIState,
-    api: Arc<F>,
+    api: Arc<F::Output>,
+    new_api: Arc<F>,
     console: Console,
     command: Arc<ForgeCommandManager>,
     cli: Cli,
@@ -64,7 +65,7 @@ pub struct UI<F> {
     _guard: forge_tracker::Guard,
 }
 
-impl<F: API> UI<F> {
+impl<A: API, F: Fn() -> A> UI<A, F> {
     /// Writes a line to the console output
     /// Takes anything that implements ToString trait
     fn writeln<T: ToString>(&mut self, content: T) -> anyhow::Result<()> {
@@ -141,13 +142,15 @@ impl<F: API> UI<F> {
         ))
     }
 
-    pub fn init(cli: Cli, api: Arc<F>) -> Result<Self> {
+    pub fn init(cli: Cli, f: F) -> Result<Self> {
         // Parse CLI arguments first to get flags
+        let api = Arc::new(f());
         let env = api.environment();
         let command = Arc::new(ForgeCommandManager::default());
         Ok(Self {
             state: Default::default(),
             api,
+            new_api: Arc::new(f),
             console: Console::new(env.clone(), command.clone()),
             cli,
             command,
@@ -552,6 +555,8 @@ impl<F: API> UI<F> {
 
     /// Initialize the state of the UI
     async fn init_state(&mut self) -> Result<Workflow> {
+        self.api = Arc::new((self.new_api)());
+
         let mut workflow = self.api.read_workflow(self.cli.workflow.as_deref()).await?;
         if workflow.model.is_none() {
             workflow.model = Some(
