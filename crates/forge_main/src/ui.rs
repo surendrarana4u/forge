@@ -82,7 +82,7 @@ impl<A: API, F: Fn() -> A> UI<A, F> {
 
     // Handle creating a new conversation
     async fn on_new(&mut self) -> Result<()> {
-        self.init_state().await?;
+        self.init_state(false).await?;
         banner::display()?;
         Ok(())
     }
@@ -194,7 +194,7 @@ impl<A: API, F: Fn() -> A> UI<A, F> {
 
         // Display the banner in dimmed colors since we're in interactive mode
         banner::display()?;
-        self.init_state().await?;
+        self.init_state(true).await?;
 
         // Get initial input from file or prompt
         let mut command = match &self.cli.command {
@@ -529,7 +529,7 @@ impl<A: API, F: Fn() -> A> UI<A, F> {
                 self.spinner.start(Some("Initializing"))?;
 
                 // Select a model if workflow doesn't have one
-                let workflow = self.init_state().await?;
+                let workflow = self.init_state(false).await?;
                 // We need to try and get the conversation ID first before fetching the model
                 let id = if let Some(ref path) = self.cli.conversation {
                     let conversation: Conversation =
@@ -554,7 +554,7 @@ impl<A: API, F: Fn() -> A> UI<A, F> {
     }
 
     /// Initialize the state of the UI
-    async fn init_state(&mut self) -> Result<Workflow> {
+    async fn init_state(&mut self, first: bool) -> Result<Workflow> {
         self.api = Arc::new((self.new_api)());
 
         let mut workflow = self.api.read_workflow(self.cli.workflow.as_deref()).await?;
@@ -567,7 +567,10 @@ impl<A: API, F: Fn() -> A> UI<A, F> {
         }
         let mut base_workflow = Workflow::default();
         base_workflow.merge(workflow.clone());
-        on_update(self.api.clone(), base_workflow.updates.as_ref()).await;
+        if first {
+            // only call on_update if this is the first initialization
+            on_update(self.api.clone(), base_workflow.updates.as_ref()).await;
+        }
         self.api
             .write_workflow(self.cli.workflow.as_deref(), &workflow)
             .await?;
