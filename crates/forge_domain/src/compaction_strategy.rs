@@ -109,7 +109,7 @@ fn find_sequence_preserving_last_n(
     }
 
     // Use saturating subtraction to prevent potential overflow
-    let end = length.saturating_sub(max_retention).saturating_sub(1);
+    let mut end = length.saturating_sub(max_retention).saturating_sub(1);
 
     // Ensure we have at least two messages to create a meaningful summary
     // If start > end or end is invalid, don't compact
@@ -128,6 +128,19 @@ fn find_sequence_preserving_last_n(
             // Otherwise reduce end by 1
             return Some((start, end.saturating_sub(1)));
         }
+    }
+
+    if messages.get(end).is_some_and(|msg| msg.has_tool_result())
+        && messages
+            .get(end.saturating_add(1))
+            .is_some_and(|msg| msg.has_tool_result())
+    {
+        // If the last message is a tool result and the next one is also a tool result,
+        // we need to adjust the end.
+        while end >= start && messages.get(end).is_some_and(|msg| msg.has_tool_result()) {
+            end = end.saturating_sub(1);
+        }
+        end = end.saturating_sub(1);
     }
 
     // Return the sequence only if it has at least one message
@@ -286,6 +299,23 @@ mod tests {
 
         let actual = seq("sutrtrtra", 2);
         let expected = "s[utrtr]tra";
+        assert_eq!(actual, expected);
+
+        // Parallel tool calls
+        let actual = seq("sutrtrtrra", 2);
+        let expected = "s[utrtr]trra";
+        assert_eq!(actual, expected);
+
+        let actual = seq("sutrtrtrra", 3);
+        let expected = "s[utrtr]trra";
+        assert_eq!(actual, expected);
+
+        let actual = seq("sutrrtrrtrra", 5);
+        let expected = "s[utrr]trrtrra";
+        assert_eq!(actual, expected);
+
+        let actual = seq("sutrrrrrra", 2);
+        let expected = "s[u]trrrrrra";
         assert_eq!(actual, expected);
 
         // Conversation patterns

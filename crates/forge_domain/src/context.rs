@@ -138,6 +138,14 @@ impl ContextMessage {
         }
     }
 
+    pub fn has_tool_result(&self) -> bool {
+        match self {
+            ContextMessage::Text(_) => false,
+            ContextMessage::Tool(_) => true,
+            ContextMessage::Image(_) => false,
+        }
+    }
+
     pub fn has_tool_call(&self) -> bool {
         match self {
             ContextMessage::Text(message) => message.tool_calls.is_some(),
