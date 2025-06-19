@@ -2,6 +2,7 @@ mod attachment;
 mod clipper;
 mod conversation;
 mod discovery;
+mod env;
 mod forge_services;
 mod infra;
 mod mcp;

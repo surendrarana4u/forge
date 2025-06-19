@@ -17,7 +17,7 @@ use crate::{
 /// ForgeApp handles the core chat functionality by orchestrating various
 /// services. It encapsulates the complex logic previously contained in the
 /// ForgeAPI chat method.
-pub struct ForgeApp<S: Services> {
+pub struct ForgeApp<S> {
     services: Arc<S>,
     tool_registry: ToolRegistry<S>,
 }
@@ -38,7 +38,6 @@ impl<S: Services> ForgeApp<S> {
 
         // Get the conversation for the chat request
         let conversation = services
-            .conversation_service()
             .find(&chat.conversation_id)
             .await
             .unwrap_or_default()
@@ -46,17 +45,14 @@ impl<S: Services> ForgeApp<S> {
 
         // Get tool definitions and models
         let tool_definitions = self.tool_registry.list().await?;
-        let models = services.provider_service().models().await?;
+        let models = services.models().await?;
 
         // Discover files using the discovery service
-        let workflow = services
-            .workflow_service()
-            .read(None)
+        let workflow = WorkflowService::read_workflow(services.as_ref(), None)
             .await
             .unwrap_or_default();
         let max_depth = workflow.max_walker_depth;
         let files = services
-            .file_discovery_service()
             .collect(max_depth)
             .await?
             .into_iter()
@@ -64,7 +60,7 @@ impl<S: Services> ForgeApp<S> {
             .collect::<Vec<_>>();
 
         // Get environment for orchestrator creation
-        let environment = services.environment_service().get_environment();
+        let environment = services.get_environment();
 
         // Register templates using workflow path or environment fallback
         let template_path = workflow
@@ -73,16 +69,10 @@ impl<S: Services> ForgeApp<S> {
                 PathBuf::from(templates)
             });
 
-        services
-            .template_service()
-            .register_template(template_path)
-            .await?;
+        services.register_template(template_path).await?;
 
         // Always try to get attachments and overwrite them
-        let attachments = services
-            .attachment_service()
-            .attachments(&chat.event.value.to_string())
-            .await?;
+        let attachments = services.attachments(&chat.event.value.to_string()).await?;
         chat.event = chat.event.attachments(attachments);
 
         // Create the orchestrator with all necessary dependencies
@@ -108,7 +98,7 @@ impl<S: Services> ForgeApp<S> {
 
                     // Always save conversation using get_conversation()
                     let conversation = orch.get_conversation().clone();
-                    let save_result = services.conversation_service().upsert(conversation).await;
+                    let save_result = services.upsert(conversation).await;
 
                     // Send any error to the stream (prioritize dispatch error over save error)
                     #[allow(clippy::collapsible_if)]
@@ -136,7 +126,6 @@ impl<S: Services> ForgeApp<S> {
         // Get the conversation
         let mut conversation = self
             .services
-            .conversation_service()
             .find(conversation_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Conversation not found: {}", conversation_id))?;
@@ -175,10 +164,7 @@ impl<S: Services> ForgeApp<S> {
         conversation.context = Some(compacted_context);
 
         // Save the updated conversation
-        self.services
-            .conversation_service()
-            .upsert(conversation)
-            .await?;
+        self.services.upsert(conversation).await?;
 
         // Return the compaction metrics
         Ok(CompactionResult::new(

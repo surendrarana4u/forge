@@ -3,15 +3,14 @@ use std::process::ExitStatus;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use forge_app::EnvironmentService;
 use forge_domain::{CommandOutput, Environment, McpServerConfig};
-use forge_fs::FileInfo;
+use forge_fs::FileInfo as FileInfoData;
 use forge_services::{
-    CommandExecutorService, FileRemoveService, FsCreateDirsService, FsMetaService, FsReadService,
-    FsSnapshotService, FsWriteService, InquireService, McpServer,
+    CommandInfra, EnvironmentInfra, FileDirectoryInfra, FileInfoInfra, FileReaderInfra,
+    FileRemoverInfra, FileWriterInfra, McpServerInfra, SnapshotInfra, UserInfra,
 };
 
-use crate::env::ForgeEnvironmentService;
+use crate::env::ForgeEnvironmentInfra;
 use crate::executor::ForgeCommandExecutorService;
 use crate::fs_create_dirs::ForgeCreateDirsService;
 use crate::fs_meta::ForgeFileMetaService;
@@ -27,7 +26,7 @@ use crate::mcp_server::ForgeMcpServer;
 pub struct ForgeInfra {
     file_read_service: Arc<ForgeFileReadService>,
     file_write_service: Arc<ForgeFileWriteService<ForgeFileSnapshotService>>,
-    environment_service: Arc<ForgeEnvironmentService>,
+    environment_service: Arc<ForgeEnvironmentInfra>,
     file_snapshot_service: Arc<ForgeFileSnapshotService>,
     file_meta_service: Arc<ForgeFileMetaService>,
     file_remove_service: Arc<ForgeFileRemoveService<ForgeFileSnapshotService>>,
@@ -39,7 +38,7 @@ pub struct ForgeInfra {
 
 impl ForgeInfra {
     pub fn new(restricted: bool) -> Self {
-        let environment_service = Arc::new(ForgeEnvironmentService::new(restricted));
+        let environment_service = Arc::new(ForgeEnvironmentInfra::new(restricted));
         let env = environment_service.get_environment();
         let file_snapshot_service = Arc::new(ForgeFileSnapshotService::new(env.clone()));
         Self {
@@ -62,14 +61,14 @@ impl ForgeInfra {
     }
 }
 
-impl EnvironmentService for ForgeInfra {
+impl EnvironmentInfra for ForgeInfra {
     fn get_environment(&self) -> Environment {
         self.environment_service.get_environment()
     }
 }
 
 #[async_trait::async_trait]
-impl FsReadService for ForgeInfra {
+impl FileReaderInfra for ForgeInfra {
     async fn read_utf8(&self, path: &Path) -> anyhow::Result<String> {
         self.file_read_service.read_utf8(path).await
     }
@@ -83,7 +82,7 @@ impl FsReadService for ForgeInfra {
         path: &Path,
         start_line: u64,
         end_line: u64,
-    ) -> anyhow::Result<(String, FileInfo)> {
+    ) -> anyhow::Result<(String, FileInfoData)> {
         self.file_read_service
             .range_read_utf8(path, start_line, end_line)
             .await
@@ -91,7 +90,7 @@ impl FsReadService for ForgeInfra {
 }
 
 #[async_trait::async_trait]
-impl FsWriteService for ForgeInfra {
+impl FileWriterInfra for ForgeInfra {
     async fn write(
         &self,
         path: &Path,
@@ -111,7 +110,7 @@ impl FsWriteService for ForgeInfra {
 }
 
 #[async_trait::async_trait]
-impl FsMetaService for ForgeInfra {
+impl FileInfoInfra for ForgeInfra {
     async fn is_file(&self, path: &Path) -> anyhow::Result<bool> {
         self.file_meta_service.is_file(path).await
     }
@@ -126,7 +125,7 @@ impl FsMetaService for ForgeInfra {
 }
 
 #[async_trait::async_trait]
-impl FsSnapshotService for ForgeInfra {
+impl SnapshotInfra for ForgeInfra {
     async fn create_snapshot(&self, file_path: &Path) -> anyhow::Result<forge_snaps::Snapshot> {
         self.file_snapshot_service.create_snapshot(file_path).await
     }
@@ -137,21 +136,21 @@ impl FsSnapshotService for ForgeInfra {
 }
 
 #[async_trait::async_trait]
-impl FileRemoveService for ForgeInfra {
+impl FileRemoverInfra for ForgeInfra {
     async fn remove(&self, path: &Path) -> anyhow::Result<()> {
         self.file_remove_service.remove(path).await
     }
 }
 
 #[async_trait::async_trait]
-impl FsCreateDirsService for ForgeInfra {
+impl FileDirectoryInfra for ForgeInfra {
     async fn create_dirs(&self, path: &Path) -> anyhow::Result<()> {
         self.create_dirs_service.create_dirs(path).await
     }
 }
 
 #[async_trait::async_trait]
-impl CommandExecutorService for ForgeInfra {
+impl CommandInfra for ForgeInfra {
     async fn execute_command(
         &self,
         command: String,
@@ -170,7 +169,7 @@ impl CommandExecutorService for ForgeInfra {
 }
 
 #[async_trait::async_trait]
-impl InquireService for ForgeInfra {
+impl UserInfra for ForgeInfra {
     async fn prompt_question(&self, question: &str) -> anyhow::Result<Option<String>> {
         self.inquire_service.prompt_question(question).await
     }
@@ -193,7 +192,7 @@ impl InquireService for ForgeInfra {
 }
 
 #[async_trait::async_trait]
-impl McpServer for ForgeInfra {
+impl McpServerInfra for ForgeInfra {
     type Client = ForgeMcpClient;
 
     async fn connect(&self, config: McpServerConfig) -> anyhow::Result<Self::Client> {

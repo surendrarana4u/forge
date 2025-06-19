@@ -4,7 +4,7 @@ use std::sync::Arc;
 use forge_app::{FsUndoOutput, FsUndoService};
 
 use crate::utils::assert_absolute_path;
-use crate::{FsMetaService, FsReadService, FsSnapshotService};
+use crate::{FileInfoInfra, FileReaderInfra, SnapshotInfra};
 
 /// Reverts the most recent file operation (create/modify/delete) on a specific
 /// file. Use this tool when you need to recover from incorrect file changes or
@@ -19,7 +19,7 @@ impl<F> ForgeFsUndo<F> {
 }
 
 #[async_trait::async_trait]
-impl<F: FsMetaService + FsReadService + FsSnapshotService> FsUndoService for ForgeFsUndo<F> {
+impl<F: FileInfoInfra + FileReaderInfra + SnapshotInfra> FsUndoService for ForgeFsUndo<F> {
     async fn undo(&self, path: String) -> anyhow::Result<FsUndoOutput> {
         let mut output = FsUndoOutput::default();
         let path = Path::new(&path);

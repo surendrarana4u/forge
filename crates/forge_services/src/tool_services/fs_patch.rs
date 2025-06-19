@@ -9,7 +9,7 @@ use tokio::fs;
 
 // No longer using dissimilar for fuzzy matching
 use crate::utils::assert_absolute_path;
-use crate::{tool_services, FsWriteService};
+use crate::{tool_services, FileWriterInfra};
 
 /// A match found in the source text. Represents a range in the source text that
 /// can be used for extraction or replacement operations. Stores the position
@@ -182,7 +182,7 @@ impl<F> ForgeFsPatch<F> {
 }
 
 #[async_trait::async_trait]
-impl<F: FsWriteService> FsPatchService for ForgeFsPatch<F> {
+impl<F: FileWriterInfra> FsPatchService for ForgeFsPatch<F> {
     async fn patch(
         &self,
         input_path: String,

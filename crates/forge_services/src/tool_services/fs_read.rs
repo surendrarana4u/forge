@@ -2,10 +2,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Context;
-use forge_app::{Content, EnvironmentService, FsReadService, ReadOutput};
+use forge_app::{Content, FsReadService, ReadOutput};
 
 use crate::utils::assert_absolute_path;
-use crate::{FsMetaService, FsReadService as InfraFsReadService};
+use crate::{EnvironmentInfra, FileInfoInfra, FileReaderInfra as InfraFsReadService};
 
 /// Resolves and validates line ranges, ensuring they are always valid
 /// and within the specified maximum size.
@@ -49,7 +49,7 @@ pub fn resolve_range(start_line: Option<u64>, end_line: Option<u64>, max_size: u
 /// # Returns
 /// * `Ok(())` if file size is within limits
 /// * `Err(anyhow::Error)` if file exceeds max_file_size
-async fn assert_file_size<F: FsMetaService>(
+async fn assert_file_size<F: FileInfoInfra>(
     infra: &F,
     path: &Path,
     max_file_size: u64,
@@ -84,7 +84,7 @@ impl<F> ForgeFsRead<F> {
 }
 
 #[async_trait::async_trait]
-impl<F: FsMetaService + EnvironmentService + InfraFsReadService> FsReadService for ForgeFsRead<F> {
+impl<F: FileInfoInfra + EnvironmentInfra + InfraFsReadService> FsReadService for ForgeFsRead<F> {
     async fn read(
         &self,
         path: String,

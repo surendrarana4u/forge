@@ -2,11 +2,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::bail;
-use forge_app::{EnvironmentService, ShellOutput, ShellService};
+use forge_app::{ShellOutput, ShellService};
 use forge_domain::Environment;
 use strip_ansi_escapes::strip;
 
-use crate::CommandExecutorService;
+use crate::{CommandInfra, EnvironmentInfra};
 
 // Strips out the ansi codes from content.
 fn strip_ansi(content: String) -> String {
@@ -25,7 +25,7 @@ pub struct ForgeShell<I> {
     infra: Arc<I>,
 }
 
-impl<I: EnvironmentService> ForgeShell<I> {
+impl<I: EnvironmentInfra> ForgeShell<I> {
     /// Create a new Shell with environment configuration
     pub fn new(infra: Arc<I>) -> Self {
         let env = infra.get_environment();
@@ -41,7 +41,7 @@ impl<I: EnvironmentService> ForgeShell<I> {
 }
 
 #[async_trait::async_trait]
-impl<I: CommandExecutorService + EnvironmentService> ShellService for ForgeShell<I> {
+impl<I: CommandInfra + EnvironmentInfra> ShellService for ForgeShell<I> {
     async fn execute(
         &self,
         command: String,

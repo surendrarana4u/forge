@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use forge_app::FollowUpService;
 
-use crate::InquireService;
+use crate::UserInfra;
 
 /// Use this tool when you encounter ambiguities, need clarification, or require
 /// more details to proceed effectively. Use this tool judiciously to maintain a
@@ -20,7 +20,7 @@ impl<F> ForgeFollowup<F> {
 }
 
 #[async_trait::async_trait]
-impl<F: InquireService> FollowUpService for ForgeFollowup<F> {
+impl<F: UserInfra> FollowUpService for ForgeFollowup<F> {
     async fn follow_up(
         &self,
         question: String,

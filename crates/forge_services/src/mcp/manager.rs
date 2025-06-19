@@ -3,17 +3,17 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use bytes::Bytes;
-use forge_app::{EnvironmentService, McpConfigManager};
+use forge_app::McpConfigManager;
 use forge_domain::{McpConfig, Scope};
 use merge::Merge;
 
-use crate::{FsMetaService, FsReadService, FsWriteService, McpServer};
+use crate::{EnvironmentInfra, FileInfoInfra, FileReaderInfra, FileWriterInfra, McpServerInfra};
 
 pub struct ForgeMcpManager<I> {
     infra: Arc<I>,
 }
 
-impl<I: McpServer + FsReadService + FsMetaService + EnvironmentService> ForgeMcpManager<I> {
+impl<I: McpServerInfra + FileReaderInfra + FileInfoInfra + EnvironmentInfra> ForgeMcpManager<I> {
     pub fn new(infra: Arc<I>) -> Self {
         Self { infra }
     }
@@ -32,10 +32,10 @@ impl<I: McpServer + FsReadService + FsMetaService + EnvironmentService> ForgeMcp
 }
 
 #[async_trait::async_trait]
-impl<I: McpServer + FsReadService + FsMetaService + EnvironmentService + FsWriteService>
+impl<I: McpServerInfra + FileReaderInfra + FileInfoInfra + EnvironmentInfra + FileWriterInfra>
     McpConfigManager for ForgeMcpManager<I>
 {
-    async fn read(&self) -> anyhow::Result<McpConfig> {
+    async fn read_mcp_config(&self) -> anyhow::Result<McpConfig> {
         let env = self.infra.get_environment();
         let paths = vec![
             // Configs at lower levels take precedence, so we read them in reverse order.
@@ -56,7 +56,7 @@ impl<I: McpServer + FsReadService + FsMetaService + EnvironmentService + FsWrite
         Ok(config)
     }
 
-    async fn write(&self, config: &McpConfig, scope: &Scope) -> anyhow::Result<()> {
+    async fn write_mcp_config(&self, config: &McpConfig, scope: &Scope) -> anyhow::Result<()> {
         self.infra
             .write(
                 self.config_path(scope).await?.as_path(),

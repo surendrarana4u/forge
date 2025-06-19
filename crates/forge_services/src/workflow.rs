@@ -5,7 +5,7 @@ use anyhow::Context;
 use forge_app::WorkflowService;
 use forge_domain::Workflow;
 
-use crate::{FsReadService, FsWriteService};
+use crate::{FileReaderInfra, FileWriterInfra};
 
 /// A workflow loader to load the workflow from the given path.
 /// It also resolves the internal paths specified in the workflow.
@@ -19,7 +19,7 @@ impl<F> ForgeWorkflowService<F> {
     }
 }
 
-impl<F: FsWriteService + FsReadService> ForgeWorkflowService<F> {
+impl<F: FileWriterInfra + FileReaderInfra> ForgeWorkflowService<F> {
     /// Find a forge.yaml config file by traversing parent directories.
     /// Returns the path to the first found config file, or the original path if
     /// none is found.
@@ -59,7 +59,7 @@ impl<F: FsWriteService + FsReadService> ForgeWorkflowService<F> {
     /// If the path is just "forge.yaml", searches for it in parent directories.
     /// If the file doesn't exist anywhere, creates a new empty workflow file at
     /// the specified path (in the current directory).
-    pub async fn read(&self, path: &Path) -> anyhow::Result<Workflow> {
+    async fn read(&self, path: &Path) -> anyhow::Result<Workflow> {
         // First, try to find the config file in parent directories if needed
         let path = &self.resolve_path(Some(path.into())).await;
 
@@ -91,17 +91,17 @@ impl<F: FsWriteService + FsReadService> ForgeWorkflowService<F> {
 }
 
 #[async_trait::async_trait]
-impl<F: FsWriteService + FsReadService> WorkflowService for ForgeWorkflowService<F> {
+impl<F: FileWriterInfra + FileReaderInfra> WorkflowService for ForgeWorkflowService<F> {
     async fn resolve(&self, path: Option<PathBuf>) -> PathBuf {
         self.resolve_path(path).await
     }
 
-    async fn read(&self, path: Option<&Path>) -> anyhow::Result<Workflow> {
+    async fn read_workflow(&self, path: Option<&Path>) -> anyhow::Result<Workflow> {
         let path_to_use = path.unwrap_or_else(|| Path::new("forge.yaml"));
         self.read(path_to_use).await
     }
 
-    async fn write(&self, path: Option<&Path>, workflow: &Workflow) -> anyhow::Result<()> {
+    async fn write_workflow(&self, path: Option<&Path>, workflow: &Workflow) -> anyhow::Result<()> {
         // First, try to find the config file in parent directories if needed
         let path_buf = match path {
             Some(p) => p.to_path_buf(),
@@ -125,7 +125,7 @@ impl<F: FsWriteService + FsReadService> WorkflowService for ForgeWorkflowService
         f(&mut workflow);
 
         // Write the updated workflow back
-        self.write(path, &workflow).await?;
+        self.write_workflow(path, &workflow).await?;
 
         Ok(workflow)
     }

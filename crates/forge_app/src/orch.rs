@@ -236,7 +236,7 @@ impl<S: AgentService> Orchestrator<S> {
             .pipe(ImageHandling::new());
         let response = self
             .services
-            .chat(model_id, transformers.transform(context))
+            .chat_agent(model_id, transformers.transform(context))
             .await?;
         response.into_full(!tool_supported).await
     }

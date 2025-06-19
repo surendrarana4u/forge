@@ -13,8 +13,8 @@ use crate::truncation::{
 };
 use crate::utils::display_path;
 use crate::{
-    Content, EnvironmentService, FsCreateOutput, FsUndoOutput, HttpResponse, PatchOutput,
-    ReadOutput, ResponseContext, SearchResult, Services, ShellOutput,
+    Content, EnvironmentService, FsCreateOutput, FsCreateService, FsUndoOutput, HttpResponse,
+    PatchOutput, ReadOutput, ResponseContext, SearchResult, ShellOutput,
 };
 
 #[derive(Debug, Default, Setters)]
@@ -313,18 +313,15 @@ impl Operation {
         }
     }
 
-    pub async fn to_create_temp<S: Services>(
+    pub async fn to_create_temp<S: EnvironmentService + FsCreateService>(
         &self,
         services: &S,
     ) -> anyhow::Result<TempContentFiles> {
         match self {
             Operation::NetFetch { input: _, output } => {
                 let original_length = output.content.len();
-                let is_truncated = original_length
-                    > services
-                        .environment_service()
-                        .get_environment()
-                        .fetch_truncation_limit;
+                let is_truncated =
+                    original_length > services.get_environment().fetch_truncation_limit;
                 let mut files = TempContentFiles::default();
 
                 if is_truncated {
@@ -336,7 +333,7 @@ impl Operation {
                 Ok(files)
             }
             Operation::Shell { output } => {
-                let env = services.environment_service().get_environment();
+                let env = services.get_environment();
                 let stdout_lines = output.output.stdout.lines().count();
                 let stderr_lines = output.output.stderr.lines().count();
                 let stdout_truncated =

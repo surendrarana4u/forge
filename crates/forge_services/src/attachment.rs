@@ -2,17 +2,17 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use forge_app::{AttachmentService, EnvironmentService};
+use forge_app::AttachmentService;
 use forge_domain::{Attachment, AttachmentContent, Image};
 
-use crate::FsReadService;
+use crate::{EnvironmentInfra, FileReaderInfra};
 
 #[derive(Clone)]
 pub struct ForgeChatRequest<F> {
     infra: Arc<F>,
 }
 
-impl<F: FsReadService + EnvironmentService> ForgeChatRequest<F> {
+impl<F: FileReaderInfra + EnvironmentInfra> ForgeChatRequest<F> {
     pub fn new(infra: Arc<F>) -> Self {
         Self { infra }
     }
@@ -60,7 +60,7 @@ impl<F: FsReadService + EnvironmentService> ForgeChatRequest<F> {
 }
 
 #[async_trait::async_trait]
-impl<F: FsReadService + EnvironmentService> AttachmentService for ForgeChatRequest<F> {
+impl<F: FileReaderInfra + EnvironmentInfra> AttachmentService for ForgeChatRequest<F> {
     async fn attachments(&self, url: &str) -> anyhow::Result<Vec<Attachment>> {
         self.prepare_attachments(Attachment::parse_all(url)).await
     }
@@ -74,7 +74,7 @@ pub mod tests {
 
     use base64::Engine;
     use bytes::Bytes;
-    use forge_app::{AttachmentService, EnvironmentService};
+    use forge_app::AttachmentService;
     use forge_domain::{
         AttachmentContent, CommandOutput, Environment, Provider, ToolDefinition, ToolName,
         ToolOutput,
@@ -85,15 +85,16 @@ pub mod tests {
     use crate::attachment::ForgeChatRequest;
     use crate::utils::AttachmentExtension;
     use crate::{
-        CommandExecutorService, FileRemoveService, FsCreateDirsService, FsMetaService,
-        FsReadService, FsSnapshotService, FsWriteService, InquireService, McpClient, McpServer,
+        CommandInfra, EnvironmentInfra, FileDirectoryInfra, FileInfoInfra, FileReaderInfra,
+        FileRemoverInfra, FileWriterInfra, McpClientInfra, McpServerInfra, SnapshotInfra,
+        UserInfra,
     };
 
     #[derive(Debug)]
-    pub struct MockEnvironmentService {}
+    pub struct MockEnvironmentInfra {}
 
     #[async_trait::async_trait]
-    impl EnvironmentService for MockEnvironmentService {
+    impl EnvironmentInfra for MockEnvironmentInfra {
         fn get_environment(&self) -> Environment {
             Environment {
                 os: "test".to_string(),
@@ -149,7 +150,7 @@ pub mod tests {
     }
 
     #[async_trait::async_trait]
-    impl FsReadService for MockFileService {
+    impl FileReaderInfra for MockFileService {
         async fn read_utf8(&self, path: &Path) -> anyhow::Result<String> {
             let files = self.files.lock().unwrap();
             match files.iter().find(|v| v.0 == path) {
@@ -195,7 +196,7 @@ pub mod tests {
     }
 
     #[async_trait::async_trait]
-    impl FileRemoveService for MockFileService {
+    impl FileRemoverInfra for MockFileService {
         async fn remove(&self, path: &Path) -> anyhow::Result<()> {
             if !self.exists(path).await? {
                 return Err(anyhow::anyhow!("File not found: {:?}", path));
@@ -206,7 +207,7 @@ pub mod tests {
     }
 
     #[async_trait::async_trait]
-    impl FsCreateDirsService for MockFileService {
+    impl FileDirectoryInfra for MockFileService {
         async fn create_dirs(&self, path: &Path) -> anyhow::Result<()> {
             self.files
                 .lock()
@@ -217,7 +218,7 @@ pub mod tests {
     }
 
     #[async_trait::async_trait]
-    impl FsWriteService for MockFileService {
+    impl FileWriterInfra for MockFileService {
         async fn write(
             &self,
             path: &Path,
@@ -249,7 +250,7 @@ pub mod tests {
     pub struct MockSnapService;
 
     #[async_trait::async_trait]
-    impl FsSnapshotService for MockSnapService {
+    impl SnapshotInfra for MockSnapService {
         async fn create_snapshot(&self, _: &Path) -> anyhow::Result<Snapshot> {
             unimplemented!()
         }
@@ -260,7 +261,7 @@ pub mod tests {
     }
 
     #[async_trait::async_trait]
-    impl FsMetaService for MockFileService {
+    impl FileInfoInfra for MockFileService {
         async fn is_file(&self, path: &Path) -> anyhow::Result<bool> {
             Ok(self
                 .files
@@ -286,7 +287,7 @@ pub mod tests {
     }
 
     #[async_trait::async_trait]
-    impl McpClient for () {
+    impl McpClientInfra for () {
         async fn list(&self) -> anyhow::Result<Vec<ToolDefinition>> {
             Ok(vec![])
         }
@@ -297,7 +298,7 @@ pub mod tests {
     }
 
     #[async_trait::async_trait]
-    impl McpServer for () {
+    impl McpServerInfra for () {
         type Client = ();
 
         async fn connect(&self, _: forge_domain::McpServerConfig) -> anyhow::Result<Self::Client> {
@@ -306,7 +307,7 @@ pub mod tests {
     }
 
     #[async_trait::async_trait]
-    impl CommandExecutorService for () {
+    impl CommandInfra for () {
         async fn execute_command(
             &self,
             command: String,
@@ -430,7 +431,7 @@ pub mod tests {
     }
 
     #[async_trait::async_trait]
-    impl InquireService for () {
+    impl UserInfra for () {
         /// Prompts the user with question
         async fn prompt_question(&self, question: &str) -> anyhow::Result<Option<String>> {
             // For testing, we can just return the question as the answer
@@ -468,14 +469,14 @@ pub mod tests {
     #[derive(Debug, Clone)]
     pub struct MockCompositeService {
         file_service: Arc<MockFileService>,
-        env_service: Arc<MockEnvironmentService>,
+        env_service: Arc<MockEnvironmentInfra>,
     }
 
     impl MockCompositeService {
         pub fn new() -> Self {
             Self {
                 file_service: Arc::new(MockFileService::new()),
-                env_service: Arc::new(MockEnvironmentService {}),
+                env_service: Arc::new(MockEnvironmentInfra {}),
             }
         }
 
@@ -485,7 +486,7 @@ pub mod tests {
     }
 
     #[async_trait::async_trait]
-    impl FsReadService for MockCompositeService {
+    impl FileReaderInfra for MockCompositeService {
         async fn read_utf8(&self, path: &Path) -> anyhow::Result<String> {
             self.file_service.read_utf8(path).await
         }
@@ -507,7 +508,7 @@ pub mod tests {
     }
 
     #[async_trait::async_trait]
-    impl EnvironmentService for MockCompositeService {
+    impl EnvironmentInfra for MockCompositeService {
         fn get_environment(&self) -> Environment {
             self.env_service.get_environment()
         }

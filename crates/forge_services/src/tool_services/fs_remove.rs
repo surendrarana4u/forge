@@ -4,7 +4,7 @@ use std::sync::Arc;
 use forge_app::{FsRemoveOutput, FsRemoveService};
 
 use crate::utils::assert_absolute_path;
-use crate::FileRemoveService;
+use crate::FileRemoverInfra;
 
 /// Request to remove a file at the specified path. Use this when you need to
 /// delete an existing file. The path must be absolute. This operation cannot
@@ -18,7 +18,7 @@ impl<T> ForgeFsRemove<T> {
 }
 
 #[async_trait::async_trait]
-impl<F: FileRemoveService> FsRemoveService for ForgeFsRemove<F> {
+impl<F: FileRemoverInfra> FsRemoveService for ForgeFsRemove<F> {
     async fn remove(&self, input_path: String) -> anyhow::Result<FsRemoveOutput> {
         let path = Path::new(&input_path);
         assert_absolute_path(path)?;

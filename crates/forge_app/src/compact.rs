@@ -127,7 +127,7 @@ impl<S: AgentService> Compactor<S> {
             context = context.max_tokens(max_token);
         }
 
-        let response = self.services.chat(&compact.model, context).await?;
+        let response = self.services.chat_agent(&compact.model, context).await?;
 
         self.collect_completion_stream_content(compact, response)
             .await

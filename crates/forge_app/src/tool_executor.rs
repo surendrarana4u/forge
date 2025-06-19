@@ -8,14 +8,26 @@ use crate::fmt_output::FormatOutput;
 use crate::operation::Operation;
 use crate::{
     EnvironmentService, FollowUpService, FsCreateService, FsPatchService, FsReadService,
-    FsRemoveService, FsSearchService, FsUndoService, NetFetchService, Services, ShellService,
+    FsRemoveService, FsSearchService, FsUndoService, NetFetchService, ShellService,
 };
 
 pub struct ToolExecutor<S> {
     services: Arc<S>,
 }
 
-impl<S: Services> ToolExecutor<S> {
+impl<
+    S: FsReadService
+        + FsCreateService
+        + FsSearchService
+        + NetFetchService
+        + FsRemoveService
+        + FsPatchService
+        + FsUndoService
+        + ShellService
+        + FollowUpService
+        + EnvironmentService,
+> ToolExecutor<S>
+{
     pub fn new(services: Arc<S>) -> Self {
         Self { services }
     }
@@ -25,7 +37,6 @@ impl<S: Services> ToolExecutor<S> {
             Tools::ForgeToolFsRead(input) => {
                 let output = self
                     .services
-                    .fs_read_service()
                     .read(input.path.clone(), input.start_line, input.end_line)
                     .await?;
                 (input, output).into()
@@ -33,7 +44,6 @@ impl<S: Services> ToolExecutor<S> {
             Tools::ForgeToolFsCreate(input) => {
                 let output = self
                     .services
-                    .fs_create_service()
                     .create(
                         input.path.clone(),
                         input.content.clone(),
@@ -46,7 +56,6 @@ impl<S: Services> ToolExecutor<S> {
             Tools::ForgeToolFsSearch(input) => {
                 let output = self
                     .services
-                    .fs_search_service()
                     .search(
                         input.path.clone(),
                         input.regex.clone(),
@@ -56,17 +65,12 @@ impl<S: Services> ToolExecutor<S> {
                 (input, output).into()
             }
             Tools::ForgeToolFsRemove(input) => {
-                let _output = self
-                    .services
-                    .fs_remove_service()
-                    .remove(input.path.clone())
-                    .await?;
+                let _output = self.services.remove(input.path.clone()).await?;
                 input.into()
             }
             Tools::ForgeToolFsPatch(input) => {
                 let output = self
                     .services
-                    .fs_patch_service()
                     .patch(
                         input.path.clone(),
                         input.search.clone(),
@@ -77,33 +81,23 @@ impl<S: Services> ToolExecutor<S> {
                 (input, output).into()
             }
             Tools::ForgeToolFsUndo(input) => {
-                let output = self
-                    .services
-                    .fs_undo_service()
-                    .undo(input.path.clone())
-                    .await?;
+                let output = self.services.undo(input.path.clone()).await?;
                 (input, output).into()
             }
             Tools::ForgeToolProcessShell(input) => {
                 let output = self
                     .services
-                    .shell_service()
                     .execute(input.command.clone(), input.cwd.clone(), input.keep_ansi)
                     .await?;
                 output.into()
             }
             Tools::ForgeToolNetFetch(input) => {
-                let output = self
-                    .services
-                    .net_fetch_service()
-                    .fetch(input.url.clone(), input.raw)
-                    .await?;
+                let output = self.services.fetch(input.url.clone(), input.raw).await?;
                 (input, output).into()
             }
             Tools::ForgeToolFollowup(input) => {
                 let output = self
                     .services
-                    .follow_up_service()
                     .follow_up(
                         input.question.clone(),
                         input
@@ -132,7 +126,7 @@ impl<S: Services> ToolExecutor<S> {
         context: &mut ToolCallContext,
     ) -> anyhow::Result<ToolOutput> {
         let tool_input = Tools::try_from(input).map_err(Error::CallArgument)?;
-        let env = self.services.environment_service().get_environment();
+        let env = self.services.get_environment();
         match tool_input.to_content(&env) {
             InputFormat::Title(title) => context.send_text(title).await?,
             InputFormat::Summary(summary) => context.send_summary(summary).await?,

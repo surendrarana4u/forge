@@ -2,13 +2,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Context;
-use forge_app::{EnvironmentService, TemplateService};
+use forge_app::TemplateService;
 use futures::future;
 use handlebars::{no_escape, Handlebars};
 use rust_embed::Embed;
 use tokio::sync::RwLock;
 
-use crate::FsReadService;
+use crate::{EnvironmentInfra, FileReaderInfra};
 
 #[derive(Embed)]
 #[folder = "../../templates/"]
@@ -20,7 +20,7 @@ pub struct ForgeTemplateService<F> {
     infra: Arc<F>,
 }
 
-impl<F: EnvironmentService + FsReadService> ForgeTemplateService<F> {
+impl<F: EnvironmentInfra + FileReaderInfra> ForgeTemplateService<F> {
     pub fn new(infra: Arc<F>) -> Self {
         let mut hb = Handlebars::new();
         hb.set_strict_mode(true);
@@ -81,7 +81,7 @@ fn compile_template(name: &str, content: &str) -> anyhow::Result<handlebars::tem
 }
 
 #[async_trait::async_trait]
-impl<F: EnvironmentService + FsReadService> TemplateService for ForgeTemplateService<F> {
+impl<F: EnvironmentInfra + FileReaderInfra> TemplateService for ForgeTemplateService<F> {
     async fn register_template(&self, path: PathBuf) -> anyhow::Result<()> {
         let cwd = &self.infra.get_environment().cwd;
 
@@ -120,7 +120,7 @@ impl<F: EnvironmentService + FsReadService> TemplateService for ForgeTemplateSer
         Ok(())
     }
 
-    async fn render(
+    async fn render_template(
         &self,
         template: impl ToString + Send,
         object: &(impl serde::Serialize + Sync),
@@ -151,7 +151,7 @@ mod tests {
 
         // Actual: Render a simple template
         let template = "App: {{name}} v{{version}} - Features: {{#each features}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}";
-        let actual = service.render(template, &data).await.unwrap();
+        let actual = service.render_template(template, &data).await.unwrap();
 
         // Expected: Result should match the expected string
         let expected = "App: Forge v1.0 - Features: templates, rendering, handlebars";
@@ -178,7 +178,7 @@ mod tests {
 
         // Actual: Render the partial-system-info template
         let actual = service
-            .render("{{> forge-partial-system-info.hbs }}", &data)
+            .render_template("{{> forge-partial-system-info.hbs }}", &data)
             .await
             .unwrap();
 
