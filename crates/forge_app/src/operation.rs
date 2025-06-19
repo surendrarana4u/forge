@@ -152,12 +152,12 @@ impl Operation {
                 Some(out) => {
                     let max_lines = min(
                         env.max_search_lines,
-                        input.max_search_lines.unwrap_or(u64::MAX),
+                        input.max_search_lines.unwrap_or(i32::MAX) as u64,
                     );
                     let start_index = input.start_index.unwrap_or(1);
                     let start_index = if start_index > 0 { start_index - 1 } else { 0 };
                     let truncated_output =
-                        truncate_search_output(&out.matches, start_index, max_lines, env);
+                        truncate_search_output(&out.matches, start_index as u64, max_lines, env);
 
                     let mut elm = Element::new("search_results")
                         .attr("path", &input.path)
