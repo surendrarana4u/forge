@@ -7,7 +7,7 @@ use forge_domain::{CommandOutput, Environment, McpServerConfig};
 use forge_fs::FileInfo as FileInfoData;
 use forge_services::{
     CommandInfra, EnvironmentInfra, FileDirectoryInfra, FileInfoInfra, FileReaderInfra,
-    FileRemoverInfra, FileWriterInfra, McpServerInfra, SnapshotInfra, UserInfra,
+    FileRemoverInfra, FileWriterInfra, McpServerInfra, SnapshotInfra, UserInfra, WalkerInfra,
 };
 
 use crate::env::ForgeEnvironmentInfra;
@@ -21,6 +21,7 @@ use crate::fs_write::ForgeFileWriteService;
 use crate::inquire::ForgeInquire;
 use crate::mcp_client::ForgeMcpClient;
 use crate::mcp_server::ForgeMcpServer;
+use crate::walker::ForgeWalkerService;
 
 #[derive(Clone)]
 pub struct ForgeInfra {
@@ -34,6 +35,7 @@ pub struct ForgeInfra {
     command_executor_service: Arc<ForgeCommandExecutorService>,
     inquire_service: Arc<ForgeInquire>,
     mcp_server: ForgeMcpServer,
+    walker_service: Arc<ForgeWalkerService>,
 }
 
 impl ForgeInfra {
@@ -57,6 +59,7 @@ impl ForgeInfra {
             )),
             inquire_service: Arc::new(ForgeInquire::new()),
             mcp_server: ForgeMcpServer,
+            walker_service: Arc::new(ForgeWalkerService::new()),
         }
     }
 }
@@ -197,5 +200,15 @@ impl McpServerInfra for ForgeInfra {
 
     async fn connect(&self, config: McpServerConfig) -> anyhow::Result<Self::Client> {
         self.mcp_server.connect(config).await
+    }
+}
+
+#[async_trait::async_trait]
+impl WalkerInfra for ForgeInfra {
+    async fn walk(
+        &self,
+        config: forge_services::WalkerConfig,
+    ) -> anyhow::Result<Vec<forge_services::WalkedFile>> {
+        self.walker_service.walk(config).await
     }
 }

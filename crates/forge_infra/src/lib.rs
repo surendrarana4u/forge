@@ -12,6 +12,7 @@ mod fs_write;
 mod inquire;
 mod mcp_client;
 mod mcp_server;
+mod walker;
 
 pub use executor::ForgeCommandExecutorService;
 pub use forge_infra::*;
