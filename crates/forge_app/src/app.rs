@@ -11,7 +11,7 @@ use crate::services::TemplateService;
 use crate::tool_registry::ToolRegistry;
 use crate::{
     AttachmentService, ConversationService, EnvironmentService, FileDiscoveryService,
-    ProviderService, Services, WorkflowService,
+    ProviderService, Services, Walker, WorkflowService,
 };
 
 /// ForgeApp handles the core chat functionality by orchestrating various
@@ -48,19 +48,22 @@ impl<S: Services> ForgeApp<S> {
         let models = services.models().await?;
 
         // Discover files using the discovery service
-        let workflow = WorkflowService::read_workflow(services.as_ref(), None)
-            .await
-            .unwrap_or_default();
+        let workflow = services.read_merged(None).await.unwrap_or_default();
         let max_depth = workflow.max_walker_depth;
+        let environment = services.get_environment();
+
+        let mut walker = Walker::conservative().cwd(environment.cwd.clone());
+
+        if let Some(depth) = max_depth {
+            walker = walker.max_depth(depth);
+        };
+
         let files = services
-            .collect(max_depth)
+            .collect_files(walker)
             .await?
             .into_iter()
             .map(|f| f.path)
             .collect::<Vec<_>>();
-
-        // Get environment for orchestrator creation
-        let environment = services.get_environment();
 
         // Register templates using workflow path or environment fallback
         let template_path = workflow
