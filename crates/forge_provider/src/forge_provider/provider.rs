@@ -14,7 +14,7 @@ use super::request::Request;
 use super::response::Response;
 use crate::error::Error;
 use crate::forge_provider::transformers::{ProviderPipeline, Transformer};
-use crate::utils::format_http_context;
+use crate::utils::{format_http_context, sanitize_headers};
 
 #[derive(Clone, Builder)]
 pub struct ForgeProvider {
@@ -71,7 +71,7 @@ impl ForgeProvider {
             reqwest::header::CONNECTION,
             HeaderValue::from_static("keep-alive"),
         );
-        debug!(headers = ?headers, "Request Headers");
+        debug!(headers = ?sanitize_headers(&headers), "Request Headers");
         headers
     }
 
@@ -90,7 +90,7 @@ impl ForgeProvider {
         info!(
             url = %url,
             model = %model,
-            headers = ?headers,
+            headers = ?sanitize_headers(&headers),
             message_count = %request.message_count(),
             message_cache_count = %request.message_cache_count(),
             "Connecting Upstream"
@@ -189,7 +189,7 @@ impl ForgeProvider {
 
     async fn fetch_models(&self, url: Url) -> Result<String, anyhow::Error> {
         let headers = self.headers();
-        info!(method = "GET", url = %url, headers = ?headers, "Fetching Models");
+        info!(method = "GET", url = %url, headers = ?sanitize_headers(&headers), "Fetching Models");
         match self.client.get(url.clone()).headers(headers).send().await {
             Ok(response) => {
                 let status = response.status();
