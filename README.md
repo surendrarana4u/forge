@@ -414,7 +414,7 @@ Or manually create a `.mcp.json` file with the following structure:
 
 ```json
 {
-  "mcp_servers": {
+  "mcpServers": {
     "server_name": {
       "command": "command_to_execute",
       "args": ["arg1", "arg2"],
