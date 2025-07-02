@@ -46,12 +46,6 @@ impl ForgeEnvironmentInfra {
             ("ANTHROPIC_API_KEY", Box::new(Provider::anthropic)),
         ];
 
-        let env_variables = keys
-            .iter()
-            .map(|(key, _)| *key)
-            .collect::<Vec<_>>()
-            .join(", ");
-
         keys.into_iter()
             .find_map(|(key, fun)| {
                 std::env::var(key).ok().map(|key| {
@@ -69,7 +63,7 @@ impl ForgeEnvironmentInfra {
                     provider
                 })
             })
-            .unwrap_or_else(|| panic!("No API key found. Please set one of: {env_variables}"))
+            .unwrap_or_else(|| panic!("API key required. Get yours at https://app.forgecode.dev/"))
     }
 
     /// Resolves retry configuration from environment variables or returns
