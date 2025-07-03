@@ -1,17 +1,20 @@
+#![allow(clippy::enum_variant_names)]
 use std::collections::HashSet;
 use std::path::PathBuf;
 
 use convert_case::{Case, Casing};
 use derive_more::From;
+use eserde::Deserialize;
 use forge_tool_macros::ToolDescription;
 use schemars::schema::RootSchema;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde::Serialize;
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, Display, EnumDiscriminants, EnumIter};
 
-use crate::{Status, ToolCallFull, ToolDefinition, ToolDescription, ToolName};
+use crate::{
+    Status, ToolCallArgumentError, ToolCallFull, ToolDefinition, ToolDescription, ToolName,
+};
 
 /// Enum representing all possible tool input types.
 ///
@@ -646,15 +649,27 @@ impl ToolsDiscriminants {
 }
 
 impl TryFrom<ToolCallFull> for Tools {
-    type Error = serde_json::Error;
+    type Error = ToolCallArgumentError;
 
     fn try_from(value: ToolCallFull) -> Result<Self, Self::Error> {
-        let object = json!({
-            "name": value.name.to_string(),
-            "arguments": value.arguments
-        });
+        let arg = if value.arguments.is_null() {
+            // Note: If the arguments are null, we use an empty object.
+            // This is a workaround for eserde, which doesn't provide
+            // detailed error messages when required fields are missing.
+            "{}".to_string()
+        } else {
+            value.arguments.to_string()
+        };
 
-        serde_json::from_value(object)
+        let json_str = format!(r#"{{"name": "{}", "arguments": {}}}"#, value.name, arg);
+        eserde::json::from_str(&json_str).map_err(ToolCallArgumentError::from)
+    }
+}
+
+impl TryFrom<&ToolCallFull> for AgentInput {
+    type Error = ToolCallArgumentError;
+    fn try_from(value: &ToolCallFull) -> Result<Self, Self::Error> {
+        eserde::json::from_str(&value.arguments.to_string()).map_err(ToolCallArgumentError::from)
     }
 }
 
@@ -710,5 +725,25 @@ mod tests {
             .join("\n");
 
         insta::assert_snapshot!(tools);
+    }
+
+    #[test]
+    fn test_tool_deser_failure() {
+        let tool_call = ToolCallFull::new("forge_tool_fs_create".into());
+        let result = Tools::try_from(tool_call);
+        insta::assert_snapshot!(result.unwrap_err().to_string());
+    }
+
+    #[test]
+    fn test_correct_deser() {
+        let tool_call = ToolCallFull::new("forge_tool_fs_create".into()).arguments(json!({
+            "path": "/some/path/foo.txt",
+            "content": "Hello, World!",
+        }));
+        let result = Tools::try_from(tool_call);
+        assert!(result.is_ok());
+        assert!(
+            matches!(result.unwrap(), Tools::ForgeToolFsCreate(data) if data.path == "/some/path/foo.txt" && data.content == "Hello, World!")
+        );
     }
 }
