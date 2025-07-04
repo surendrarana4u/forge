@@ -120,6 +120,12 @@ pub struct Workflow {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[merge(strategy = crate::merge::option)]
     pub tool_supported: Option<bool>,
+
+    /// Maximum number of requests that can be made in a single turn
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[merge(strategy = crate::merge::option)]
+    pub max_requests_per_turn: Option<usize>,
 }
 
 impl Default for Workflow {
@@ -160,6 +166,7 @@ impl Workflow {
             tool_supported: None,
             updates: None,
             templates: None,
+            max_requests_per_turn: None,
         }
     }
 
