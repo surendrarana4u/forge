@@ -243,6 +243,7 @@ impl<S: AgentService> Orchestrator<S> {
 
     // Create a helper method with the core functionality
     async fn init_agent(&mut self, agent_id: &AgentId, event: &Event) -> anyhow::Result<()> {
+        let mut tool_failure_attempts = HashMap::new();
         let variables = self.conversation.variables.clone();
         debug!(
             conversation_id = %self.conversation.id,
@@ -358,14 +359,13 @@ impl<S: AgentService> Orchestrator<S> {
             // Set estimated tokens
             usage.estimated_tokens = context.token_count();
 
-            // Send the usage information if available
-
             info!(
                 token_usage = usage.prompt_tokens,
                 estimated_token_usage = usage.estimated_tokens,
                 "Processing usage information"
             );
 
+            // Send the usage information if available
             self.send(ChatResponse::Usage(usage.clone())).await?;
 
             // Check if context requires compression and decide to compact
@@ -402,15 +402,41 @@ impl<S: AgentService> Orchestrator<S> {
             let mut tool_context =
                 ToolCallContext::new(self.conversation.tasks.clone()).sender(self.sender.clone());
 
-            // Process tool calls and update context
-            context = context.append_message(
-                content.clone(),
-                self.execute_tool_calls(&agent, &tool_calls, &mut tool_context)
-                    .await?,
-            );
-            self.conversation.tasks = tool_context.tasks;
+            // Check if tool calls are within allowed limits if max_tool_failure_per_turn is
+            // configured
+            let allowed_limits_exceeded =
+                self.check_tool_call_failures(&tool_failure_attempts, &tool_calls);
 
-            context = SetModel::new(model_id.clone()).transform(context);
+            // Process tool calls and update context
+            let mut tool_call_records = self
+                .execute_tool_calls(&agent, &tool_calls, &mut tool_context)
+                .await?;
+
+            // Update the tool call attempts, if the tool call is an error
+            // we increment the attempts, otherwise we remove it from the attempts map
+            if let Some(allowed_max_attempts) = self.conversation.max_tool_failure_per_turn.as_ref()
+            {
+                tool_call_records.iter_mut().for_each(|(_, result)| {
+                    if result.is_error() {
+                        let current_attempts = tool_failure_attempts
+                            .entry(result.name.clone())
+                            .and_modify(|count| *count += 1)
+                            .or_insert(1);
+                        let attempts_left = allowed_max_attempts.saturating_sub(*current_attempts);
+
+                        // Add attempt information to the error message so the agent can reflect on it.
+                        let message = Element::new("retry").text(format!(
+                            "This tool call failed. You have {attempts_left} attempt(s) remaining out of a maximum of {allowed_max_attempts}. Please reflect on the error, adjust your approach if needed, and try again."
+                        ));
+
+                        result.output.combine_mut(ToolOutput::text(message));
+                    } else {
+                        tool_failure_attempts.remove(&result.name);
+                    }
+                });
+            }
+
+            context = context.append_message(content.clone(), tool_call_records);
 
             if has_no_tool_calls {
                 // No tool calls present, which doesn't mean task is complete so reprompt the
@@ -447,7 +473,31 @@ impl<S: AgentService> Orchestrator<S> {
                 empty_tool_call_count = 0;
             }
 
+            if allowed_limits_exceeded {
+                // Tool call retry limit exceeded, force completion
+                warn!(
+                    agent_id = %agent.id,
+                    model_id = %model_id,
+                    tools = %tool_failure_attempts.iter().map(|(name, count)| format!("{name}: {count}")).collect::<Vec<_>>().join(", "),
+                    max_tool_failure_per_turn = ?self.conversation.max_tool_failure_per_turn,
+                    "Tool execution failure limit exceeded - terminating conversation to prevent infinite retry loops."
+                );
+
+                if let Some(limit) = self.conversation.max_tool_failure_per_turn {
+                    self.send(ChatResponse::Interrupt {
+                        reason: InterruptionReason::MaxToolFailurePerTurnLimitReached {
+                            limit: limit as u64,
+                        },
+                    })
+                    .await?;
+                }
+
+                is_complete = true;
+            }
+
             // Update context in the conversation
+            context = SetModel::new(model_id.clone()).transform(context);
+            self.conversation.tasks = tool_context.tasks;
             self.conversation.context = Some(context.clone());
             self.services.update(self.conversation.clone()).await?;
             request_count += 1;
@@ -476,6 +526,21 @@ impl<S: AgentService> Orchestrator<S> {
         }
 
         Ok(())
+    }
+
+    fn check_tool_call_failures(
+        &self,
+        tool_failure_attempts: &HashMap<ToolName, usize>,
+        tool_calls: &[ToolCallFull],
+    ) -> bool {
+        self.conversation
+            .max_tool_failure_per_turn
+            .is_some_and(|limit| {
+                tool_calls
+                    .iter()
+                    .map(|call| tool_failure_attempts.get(&call.name).unwrap_or(&0))
+                    .any(|count| *count > limit)
+            })
     }
 
     async fn set_user_prompt(

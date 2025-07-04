@@ -39,6 +39,7 @@ pub struct Conversation {
     pub agents: Vec<Agent>,
     pub events: Vec<Event>,
     pub tasks: TaskList,
+    pub max_tool_failure_per_turn: Option<usize>,
     pub max_requests_per_turn: Option<usize>,
 }
 
@@ -161,6 +162,7 @@ impl Conversation {
             agents,
             events: Default::default(),
             tasks: TaskList::new(),
+            max_tool_failure_per_turn: workflow.max_tool_failure_per_turn,
             max_requests_per_turn: workflow.max_requests_per_turn,
         }
     }
