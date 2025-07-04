@@ -539,7 +539,7 @@ impl<S: AgentService> Orchestrator<S> {
                 tool_calls
                     .iter()
                     .map(|call| tool_failure_attempts.get(&call.name).unwrap_or(&0))
-                    .any(|count| *count > limit)
+                    .any(|count| *count >= limit)
             })
     }
 
