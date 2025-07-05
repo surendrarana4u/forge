@@ -27,7 +27,6 @@ fn create_build_release_job(matrix: Value, draft_release_job: &Job) -> Job {
                 .pull_requests(Level::Write),
         )
         .add_step(Step::uses("actions", "checkout", "v4"))
-        .add_step(Step::run("rustup update stable").name("Update Rust toolchain"))
         // Install Rust with cross-compilation target
         .add_step(
             Step::uses("taiki-e", "setup-cross-toolchain-action", "v1")

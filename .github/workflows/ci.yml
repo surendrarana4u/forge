@@ -147,8 +147,6 @@ jobs:
           target: aarch64-pc-windows-msvc
     steps:
     - uses: actions/checkout@v4
-    - name: Update Rust toolchain
-      run: rustup update stable
     - uses: taiki-e/setup-cross-toolchain-action@v1
       with:
         target: ${{ matrix.target }}
@@ -235,8 +233,6 @@ jobs:
           target: aarch64-pc-windows-msvc
     steps:
     - uses: actions/checkout@v4
-    - name: Update Rust toolchain
-      run: rustup update stable
     - uses: taiki-e/setup-cross-toolchain-action@v1
       with:
         target: ${{ matrix.target }}
