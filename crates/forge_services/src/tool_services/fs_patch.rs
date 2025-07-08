@@ -96,7 +96,7 @@ fn apply_replacement(
 
             // Append content after the matched text
             PatchOperation::Append => Ok(format!(
-                "{}{}{}",
+                "{}\n{}{}",
                 &haystack[..patch.end()],
                 content,
                 &haystack[patch.end()..]
@@ -169,7 +169,7 @@ fn apply_replacement(
     } else {
         match operation {
             // Append to the end of the file
-            PatchOperation::Append => Ok(format!("{haystack}{content}")),
+            PatchOperation::Append => Ok(format!("{haystack}\n{content}")),
             // Prepend to the beginning of the file
             PatchOperation::Prepend => Ok(format!("{content}{haystack}")),
             // Replace is equivalent to completely replacing the file
@@ -306,7 +306,7 @@ mod tests {
         let content = " there";
 
         let result = super::apply_replacement(source.to_string(), search, &operation, content);
-        assert_eq!(result.unwrap(), "hello there world");
+        assert_eq!(result.unwrap(), "hello\n there world");
     }
 
     #[test]
@@ -317,7 +317,7 @@ mod tests {
         let content = " suffix";
 
         let result = super::apply_replacement(source.to_string(), search, &operation, content);
-        assert_eq!(result.unwrap(), "hello world suffix");
+        assert_eq!(result.unwrap(), "hello world\n suffix");
     }
 
     #[test]
