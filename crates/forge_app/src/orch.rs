@@ -271,7 +271,7 @@ impl<S: AgentService> Orchestrator<S> {
         // Estimate token count for compaction decision
         let estimated_tokens = context.token_count();
         if agent.should_compact(context, estimated_tokens) {
-            info!(agent_id = %agent.id, "Compaction needed, applying compaction in parallel");
+            info!(agent_id = %agent.id, "Compaction needed");
             Compactor::new(self.services.clone())
                 .compact(agent, context.clone(), false)
                 .await
@@ -303,7 +303,7 @@ impl<S: AgentService> Orchestrator<S> {
         let mut context = self.conversation.context.clone().unwrap_or_default();
 
         // attach the conversation ID to the context
-        context = context.conversation_id(self.conversation.id.clone());
+        context = context.conversation_id(self.conversation.id);
 
         // Reset all the available tools
         context = context.tools(self.get_allowed_tools(&agent)?);
@@ -411,6 +411,17 @@ impl<S: AgentService> Orchestrator<S> {
                 compaction_result,
             ) = tokio::try_join!(main_request, self.check_and_compact(&agent, &context))?;
 
+            // Apply compaction result if it completed successfully
+            match compaction_result {
+                Some(compacted_context) => {
+                    info!(agent_id = %agent.id, "Using compacted context from execution");
+                    context = compacted_context;
+                }
+                None => {
+                    debug!(agent_id = %agent.id, "No compaction was needed");
+                }
+            }
+
             // Set estimated tokens
             usage.estimated_tokens = context.token_count();
 
@@ -422,17 +433,6 @@ impl<S: AgentService> Orchestrator<S> {
 
             // Send the usage information if available
             self.send(ChatResponse::Usage(usage.clone())).await?;
-
-            // Apply compaction result if it completed successfully
-            match compaction_result {
-                Some(compacted_context) => {
-                    info!(agent_id = %agent.id, "Using compacted context from parallel execution");
-                    context = compacted_context;
-                }
-                None => {
-                    debug!(agent_id = %agent.id, "No compaction was needed");
-                }
-            }
 
             let has_no_tool_calls = tool_calls.is_empty();
 
