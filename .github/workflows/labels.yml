@@ -21,7 +21,7 @@ on:
     branches:
     - main
     paths:
-    - .github/labels.json
+    - .github
 permissions:
   contents: write
 jobs:
@@ -31,11 +31,9 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: Install github-label-sync
-      run: sudo npm install --global github-label-sync
     - name: Sync labels
       run: |-
-        github-label-sync \
+        npx github-label-sync \
           --access-token ${{ secrets.GITHUB_TOKEN }} \
           --labels ".github/labels.json" \
           --allow-added-labels \

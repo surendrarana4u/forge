@@ -7,7 +7,7 @@ pub fn create_labels_workflow() -> Workflow {
         .on(Event {
             push: Some(Push {
                 branches: vec!["main".to_string()],
-                paths: vec![".github/labels.json".to_string()],
+                paths: vec![".github".to_string()],
                 ..Push::default()
             }),
             ..Event::default()
@@ -26,14 +26,10 @@ pub fn create_label_sync_job() -> Job {
         .add_step(
             Step::uses("actions", "checkout", "v4")
                 .name("Checkout")
-        )
-        .add_step(
-            Step::run("sudo npm install --global github-label-sync")
-                .name("Install github-label-sync")
-        )
+        )        
         .add_step(
             Step::run(
-                "github-label-sync \\\n  --access-token ${{ secrets.GITHUB_TOKEN }} \\\n  --labels \".github/labels.json\" \\\n  --allow-added-labels \\\n  ${{ github.repository }}"
+                "npx github-label-sync \\\n  --access-token ${{ secrets.GITHUB_TOKEN }} \\\n  --labels \".github/labels.json\" \\\n  --allow-added-labels \\\n  ${{ github.repository }}"
             )
                 .name("Sync labels")
         )
