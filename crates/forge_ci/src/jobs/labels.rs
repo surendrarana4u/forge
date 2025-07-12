@@ -26,7 +26,7 @@ pub fn create_label_sync_job() -> Job {
         .add_step(
             Step::uses("actions", "checkout", "v4")
                 .name("Checkout")
-        )        
+        )
         .add_step(
             Step::run(
                 "npx github-label-sync \\\n  --access-token ${{ secrets.GITHUB_TOKEN }} \\\n  --labels \".github/labels.json\" \\\n  --allow-added-labels \\\n  ${{ github.repository }}"
