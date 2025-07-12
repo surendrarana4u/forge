@@ -5,11 +5,7 @@ pub fn create_labels_workflow() -> Workflow {
     let mut labels_workflow = Workflow::default()
         .name("Github Label Sync")
         .on(Event {
-            push: Some(Push {
-                branches: vec!["main".to_string()],
-                paths: vec![".github".to_string()],
-                ..Push::default()
-            }),
+            push: Some(Push { branches: vec!["main".to_string()], ..Push::default() }),
             ..Event::default()
         })
         .permissions(Permissions::default().contents(Level::Write));
