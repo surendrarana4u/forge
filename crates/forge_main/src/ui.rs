@@ -65,7 +65,7 @@ pub struct UI<A, F: Fn() -> A> {
     _guard: forge_tracker::Guard,
 }
 
-impl<A: API, F: Fn() -> A> UI<A, F> {
+impl<A: API + 'static, F: Fn() -> A> UI<A, F> {
     /// Writes a line to the console output
     /// Takes anything that implements ToString trait
     fn writeln<T: ToString>(&mut self, content: T) -> anyhow::Result<()> {
@@ -85,6 +85,7 @@ impl<A: API, F: Fn() -> A> UI<A, F> {
         self.api = Arc::new((self.new_api)());
         self.init_state(false).await?;
         banner::display()?;
+        self.trace_user();
         Ok(())
     }
 
@@ -196,6 +197,7 @@ impl<A: API, F: Fn() -> A> UI<A, F> {
         // Display the banner in dimmed colors since we're in interactive mode
         banner::display()?;
         self.init_state(true).await?;
+        self.trace_user();
 
         // Get initial input from file or prompt
         let mut command = match &self.cli.command {
@@ -836,6 +838,17 @@ impl<A: API, F: Fn() -> A> UI<A, F> {
         self.api.write_mcp_config(scope, &config).await?;
 
         Ok(())
+    }
+
+    fn trace_user(&self) {
+        let api = self.api.clone();
+        // NOTE: Spawning required so that we don't block the user while querying user
+        // info
+        tokio::spawn(async move {
+            if let Ok(Some(user_info)) = api.user_info().await {
+                tracker::login(user_info.auth_provider_id.into_string());
+            }
+        });
     }
 }
 
