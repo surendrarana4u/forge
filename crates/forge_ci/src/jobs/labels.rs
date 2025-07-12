@@ -19,6 +19,10 @@ pub fn create_labels_workflow() -> Workflow {
 pub fn create_label_sync_job() -> Job {
     Job::new("label-sync")
         .runs_on("ubuntu-latest")
+        .permissions(
+            Permissions::default()
+                .issues(Level::Write)
+        )
         .add_step(
             Step::uses("actions", "checkout", "v4")
                 .name("Checkout")
