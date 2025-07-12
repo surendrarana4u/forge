@@ -9,32 +9,15 @@
     "name": "release: breaking",
     "color": "d73a4a",
     "description": "Introduces a breaking change.",
-    "aliases": ["breaking change", "breaking-change", "Type: Breaking Change", "type: breaking", "breaking"]
+    "aliases": [
+      "breaking change",
+      "breaking-change",
+      "Type: Breaking Change",
+      "type: breaking",
+      "breaking"
+    ]
   },
-  {
-    "name": "effort: 1",
-    "color": "91ca55"
-  },
-  {
-    "name": "effort: 2",
-    "color": "c2e2a2"
-  },
-  {
-    "name": "effort: 3",
-    "color": "e9f4dc"
-  },
-  {
-    "name": "effort: 5",
-    "color": "fef6d7"
-  },
-  {
-    "name": "effort: 8",
-    "color": "fef2c0"
-  },
-  {
-    "name": "effort: 13",
-    "color": "fbca04"
-  },
+
   {
     "name": "good first issue",
     "color": "7057ff",
@@ -53,26 +36,13 @@
   {
     "name": "help",
     "color": "0e8a16",
-    "aliases": ["help wanted", "Patch Welcome", "status: help wanted", "Status: PR Welcome", "Status: Ready for PR"]
-  },
-  {
-    "name": "priority: now",
-    "color": "b10e1e",
-    "aliases": ["priority: critical", "Priority: Critical"]
-  },
-  {
-    "name": "priority: soon",
-    "color": "d17a22",
-    "aliases": ["priority: medium", "Priority: Medium"]
-  },
-  {
-    "name": "priority: 2day",
-    "color": "f9d616",
-    "aliases": ["priority: high", "Priority: High"]
-  },
-  {
-    "name": "semantic-release",
-    "color": "e6e6e6"
+    "aliases": [
+      "help wanted",
+      "Patch Welcome",
+      "status: help wanted",
+      "Status: PR Welcome",
+      "Status: Ready for PR"
+    ]
   },
   {
     "name": "state: approved",
@@ -90,7 +60,14 @@
     "name": "state: pending",
     "color": "C3F7F7",
     "description": "Action is underway but awaiting other tasks or data before completion.",
-    "aliases": ["in progress", "on hold", "pending", "Status: In Progress", "Status: Review Needed", "watchlist"]
+    "aliases": [
+      "in progress",
+      "on hold",
+      "pending",
+      "Status: In Progress",
+      "Status: Review Needed",
+      "watchlist"
+    ]
   },
   {
     "name": "state: inactive",
@@ -166,13 +143,28 @@
     "name": "type: feature",
     "color": "FA1DD4",
     "description": "Brand new functionality, features, pages, workflows, endpoints, etc.",
-    "aliases": ["addition", "enhancement", "feature", "type: enhancement", "Type: Feature", "performance"]
+    "aliases": [
+      "addition",
+      "enhancement",
+      "feature",
+      "type: enhancement",
+      "Type: Feature",
+      "performance"
+    ]
   },
   {
     "name": "type: fix",
     "color": "FA1DD4",
     "description": "Iterations on existing features or infrastructure.",
-    "aliases": ["fix", "improvement", "optimization", "refactor", "Type: Fix", "Type: Refactoring", "bug"]
+    "aliases": [
+      "fix",
+      "improvement",
+      "optimization",
+      "refactor",
+      "Type: Fix",
+      "Type: Refactoring",
+      "bug"
+    ]
   },
   {
     "name": "type: security",
