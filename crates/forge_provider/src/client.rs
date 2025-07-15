@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 use forge_app::domain::{
-    ChatCompletionMessage, Context, HttpConfig, Model, ModelId, Provider, ResultStream, RetryConfig,
+    Cert, ChatCompletionMessage, Context, HttpConfig, Model, ModelId, Provider, ResultStream,
+    RetryConfig,
 };
 use reqwest::redirect::Policy;
 use tokio::sync::RwLock;
@@ -33,8 +34,9 @@ impl Client {
         retry_config: Arc<RetryConfig>,
         version: impl ToString,
         timeout_config: &HttpConfig,
+        cert: Option<&Cert>,
     ) -> Result<Self> {
-        let client = reqwest::Client::builder()
+        let mut builder = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(
                 timeout_config.connect_timeout,
             ))
@@ -43,8 +45,13 @@ impl Client {
                 timeout_config.pool_idle_timeout,
             ))
             .pool_max_idle_per_host(timeout_config.pool_max_idle_per_host)
-            .redirect(Policy::limited(timeout_config.max_redirects))
-            .build()?;
+            .redirect(Policy::limited(timeout_config.max_redirects));
+
+        if let Some(cert) = cert {
+            builder = builder.identity(reqwest::Identity::from_pem(cert.as_str().as_bytes())?);
+        }
+
+        let client = builder.build()?;
 
         let inner = match &provider {
             Provider::OpenAI { url, .. } => InnerClient::OpenAICompat(
@@ -155,6 +162,7 @@ mod tests {
             Arc::new(RetryConfig::default()),
             "dev",
             &HttpConfig::default(),
+            None,
         )
         .unwrap();
 
@@ -174,6 +182,7 @@ mod tests {
             Arc::new(RetryConfig::default()),
             "dev",
             &HttpConfig::default(),
+            None,
         )
         .unwrap();
 

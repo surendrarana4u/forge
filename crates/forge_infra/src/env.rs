@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use forge_domain::{Environment, RetryConfig};
+use forge_domain::{Cert, Environment, RetryConfig};
 use forge_services::EnvironmentInfra;
 
 #[derive(Clone)]
@@ -106,6 +106,11 @@ impl ForgeEnvironmentInfra {
     fn get(&self) -> Environment {
         let cwd = Self::cwd();
         let retry_config = self.resolve_retry_config();
+        let cert = obfstr::obfstr!(match option_env!("MTLS_CERT") {
+            Some(cert) => cert,
+            None => "",
+        })
+        .to_string();
 
         Environment {
             os: std::env::consts::OS.to_string(),
@@ -124,6 +129,7 @@ impl ForgeEnvironmentInfra {
             stdout_max_suffix_length: 200,
             http: self.resolve_timeout_config(),
             max_file_size: 256 << 10, // 256 KiB
+            cert: (!cert.is_empty()).then_some(Cert::new(cert)),
         }
     }
 
