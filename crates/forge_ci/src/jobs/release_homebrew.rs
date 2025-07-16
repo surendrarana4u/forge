@@ -1,27 +1,7 @@
 use gh_workflow_tailcall::*;
 
-/// Create a workflow for homebrew releases
-pub fn create_homebrew_workflow() -> Workflow {
-    let mut homebrew_workflow = Workflow::default()
-        .name("Homebrew Release")
-        .on(Event {
-            release: Some(Release { types: vec![ReleaseType::Published] }),
-            ..Event::default()
-        })
-        .permissions(
-            Permissions::default()
-                .contents(Level::Write)
-                .pull_requests(Level::Write),
-        );
-
-    homebrew_workflow =
-        homebrew_workflow.add_job("homebrew_release", create_homebrew_release_job());
-
-    homebrew_workflow
-}
-
 /// Create a homebrew release job
-pub fn create_homebrew_release_job() -> Job {
+pub fn release_homebrew_job() -> Job {
     Job::new("homebrew_release")
         .runs_on("ubuntu-latest")
         .add_step(
