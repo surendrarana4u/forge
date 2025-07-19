@@ -1,4 +1,6 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/antinomyhq/forge/refs/heads/main/forge.schema.json
+extend:
+  - https://antinomyhq.ai/forge.default.yaml
 agents:
 - id: forge
   tools:
@@ -79,3 +81,10 @@ custom_rules: |-
 
   Refactoring:
   - If asked to fix failing tests, always confirm whether to update the implementation or the tests.
+  Elm Architecture:
+  - Command executors should ALWAYS return Option<Action>, never send them directly through channels
+  - Actions are the only way to update application state
+  - State updates trigger UI changes through the unidirectional data flow
+  - Commands represent intent to perform side effects
+  - Actions represent the result of those side effects
+  - The executor pattern: Command -> Side Effect -> Action -> State Update -> UI Update
