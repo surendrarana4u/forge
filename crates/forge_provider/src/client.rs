@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
+use derive_setters::Setters;
 use forge_app::domain::{
     ChatCompletionMessage, Context, HttpConfig, Model, ModelId, Provider, ResultStream, RetryConfig,
 };
@@ -15,25 +16,37 @@ use crate::anthropic::Anthropic;
 use crate::forge_provider::ForgeProvider;
 use crate::retry::into_retry;
 
-#[derive(Clone)]
-pub struct Client {
-    retry_config: Arc<RetryConfig>,
-    inner: Arc<InnerClient>,
-    models_cache: Arc<RwLock<HashMap<ModelId, Model>>>,
+#[derive(Setters)]
+#[setters(strip_option, into)]
+pub struct ClientBuilder {
+    pub retry_config: Arc<RetryConfig>,
+    pub timeout_config: HttpConfig,
+    pub use_hickory: bool,
+    pub provider: Provider,
+    pub version: String,
 }
 
-enum InnerClient {
-    OpenAICompat(ForgeProvider),
-    Anthropic(Anthropic),
-}
+impl ClientBuilder {
+    /// Create a new ClientBuilder with required provider and version
+    /// parameters.
+    pub fn new(provider: Provider, version: impl Into<String>) -> Self {
+        Self {
+            retry_config: Arc::new(RetryConfig::default()),
+            timeout_config: HttpConfig::default(),
+            use_hickory: false,
+            provider,
+            version: version.into(),
+        }
+    }
 
-impl Client {
-    pub fn new(
-        provider: Provider,
-        retry_config: Arc<RetryConfig>,
-        version: impl ToString,
-        timeout_config: &HttpConfig,
-    ) -> Result<Self> {
+    /// Build the client with the configured settings.
+    pub fn build(self) -> Result<Client> {
+        let provider = self.provider;
+        let version = self.version;
+
+        let timeout_config = self.timeout_config;
+        let retry_config = self.retry_config;
+
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(
                 timeout_config.connect_timeout,
@@ -44,6 +57,7 @@ impl Client {
             ))
             .pool_max_idle_per_host(timeout_config.pool_max_idle_per_host)
             .redirect(Policy::limited(timeout_config.max_redirects))
+            .hickory_dns(self.use_hickory)
             .build()?;
 
         let inner = match &provider {
@@ -51,7 +65,7 @@ impl Client {
                 ForgeProvider::builder()
                     .client(client)
                     .provider(provider.clone())
-                    .version(version.to_string())
+                    .version(version.clone())
                     .build()
                     .with_context(|| format!("Failed to initialize: {url}"))?,
             ),
@@ -69,13 +83,27 @@ impl Client {
             ),
         };
 
-        Ok(Self {
+        Ok(Client {
             inner: Arc::new(inner),
             retry_config,
             models_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
+}
 
+#[derive(Clone)]
+pub struct Client {
+    retry_config: Arc<RetryConfig>,
+    inner: Arc<InnerClient>,
+    models_cache: Arc<RwLock<HashMap<ModelId, Model>>>,
+}
+
+enum InnerClient {
+    OpenAICompat(ForgeProvider),
+    Anthropic(Anthropic),
+}
+
+impl Client {
     fn retry<A>(&self, result: anyhow::Result<A>) -> anyhow::Result<A> {
         let retry_config = &self.retry_config;
         result.map_err(move |e| into_retry(e, retry_config))
@@ -150,13 +178,7 @@ mod tests {
             url: Url::parse("https://api.openai.com/v1/").unwrap(),
             key: Some("test-key".to_string()),
         };
-        let client = Client::new(
-            provider,
-            Arc::new(RetryConfig::default()),
-            "dev",
-            &HttpConfig::default(),
-        )
-        .unwrap();
+        let client = ClientBuilder::new(provider, "dev").build().unwrap();
 
         // Verify cache is initialized as empty
         let cache = client.models_cache.read().await;
@@ -169,18 +191,47 @@ mod tests {
             url: Url::parse("https://api.openai.com/v1/").unwrap(),
             key: Some("test-key".to_string()),
         };
-        let client = Client::new(
-            provider,
-            Arc::new(RetryConfig::default()),
-            "dev",
-            &HttpConfig::default(),
-        )
-        .unwrap();
+        let client = ClientBuilder::new(provider, "dev").build().unwrap();
 
         // Verify refresh_models method is available (it will fail due to no actual API,
         // but that's expected)
         let result = client.refresh_models().await;
         assert!(result.is_err()); // Expected to fail since we're not hitting a
         // real API
+    }
+
+    #[tokio::test]
+    async fn test_builder_pattern_api() {
+        let provider = Provider::OpenAI {
+            url: Url::parse("https://api.openai.com/v1/").unwrap(),
+            key: Some("test-key".to_string()),
+        };
+
+        // Test the builder pattern API
+        let client = ClientBuilder::new(provider, "dev")
+            .retry_config(Arc::new(RetryConfig::default()))
+            .timeout_config(HttpConfig::default())
+            .use_hickory(true)
+            .build()
+            .unwrap();
+
+        // Verify cache is initialized as empty
+        let cache = client.models_cache.read().await;
+        assert!(cache.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_defaults() {
+        let provider = Provider::OpenAI {
+            url: Url::parse("https://api.openai.com/v1/").unwrap(),
+            key: Some("test-key".to_string()),
+        };
+
+        // Test that ClientBuilder::new works with minimal parameters
+        let client = ClientBuilder::new(provider, "dev").build().unwrap();
+
+        // Verify cache is initialized as empty
+        let cache = client.models_cache.read().await;
+        assert!(cache.is_empty());
     }
 }
