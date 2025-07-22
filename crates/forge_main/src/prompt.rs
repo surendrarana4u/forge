@@ -89,14 +89,14 @@ impl Prompt for ForgePrompt {
             .usage
             .as_ref()
             .unwrap_or(&Usage::default())
-            .prompt_tokens;
+            .total_tokens;
 
         let estimated = self.usage.as_ref().map_or(0, |u| u.estimated_tokens);
 
-        if estimated > reported {
-            write!(result, "/~{estimated}").unwrap();
-        } else {
+        if reported > 0 {
             write!(result, "/{reported}").unwrap();
+        } else {
+            write!(result, "/~{estimated}").unwrap();
         }
 
         write!(result, "]").unwrap();
@@ -231,7 +231,7 @@ mod tests {
 
         let actual = prompt.render_prompt_right();
         assert!(actual.contains(&VERSION.to_string()));
-        assert!(actual.contains("10"));
+        assert!(actual.contains("30"));
     }
 
     #[test]
@@ -311,6 +311,6 @@ mod tests {
         assert!(actual.contains("claude-3")); // Only the last part after splitting by '/'
         assert!(!actual.contains("anthropic/claude-3")); // Should not contain the full model ID
         assert!(actual.contains(&VERSION.to_string()));
-        assert!(actual.contains("10"));
+        assert!(actual.contains("30"));
     }
 }
